@@ -66,3 +66,31 @@ git pull origin main
 git checkout feature/doctor-table
 git merge main
 ```
+
+## Документы
+
+Документы подчиняются тем же трём правилам, что и код: ветка от свежей `main` (префикс `docs/`) и PR.
+
+### Работы участников — `docs/works/`
+
+- У каждого участника своя папка `docs/works/<Фамилия>_<Имя>/`, например `docs/works/Zhanat_Rishat/`.
+- Файлы называются `<StudentID>_<Фамилия>_<Имя>_Task<N>.docx`, например `24B031775_Zhanat_Rishat_Task2.docx`.
+- Каждый кладёт файлы только в свою папку.
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b docs/zhanat-rishat-task8
+# положить файл в docs/works/Zhanat_Rishat/
+git add docs/works/Zhanat_Rishat/24B031775_Zhanat_Rishat_Task8.docx
+git commit -m "Add Task 8 (Zhanat Rishat)"
+git push -u origin docs/zhanat-rishat-task8
+# открыть PR на GitHub
+```
+
+### Критические решения — `docs/decisions.md`
+
+- Сюда записываются только критические решения: смена технологии, способ работы с чем-то важным и т. п. Мелкие решения, которые не влияют на проект, сюда не пишутся.
+- Каждая запись оформляется по шаблону из начала файла. Номера идут по порядку: 1, 2, 3…
+- Новая запись добавляется в конец файла.
+- Старые записи не переписываются. Если решение поменялось, добавляется новая запись, а в её поле `Reference` указывается номер прежней.
