@@ -13,7 +13,9 @@ services:
       - ./db:/db:ro
       - ./db/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U medbase -d hospital_ward"]
+      # TCP check: the temporary server used during init only listens on a socket,
+      # so the container becomes healthy only after setup.sql has finished
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U medbase -d hospital_ward"]
       interval: 2s
       retries: 30
 

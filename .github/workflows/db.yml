@@ -1,0 +1,31 @@
+name: DB CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  db-check:
+    name: db-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check database is demo-ready
+        run: bash scripts/check-db.sh
+
+      - name: Database logs
+        if: failure()
+        run: docker logs medbase-postgres
+
+      - name: Stop database
+        if: always()
+        run: docker compose down -v

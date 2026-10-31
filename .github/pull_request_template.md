@@ -9,7 +9,6 @@
 ## Чек-лист (правила из CONTRIBUTING.md)
 
 - [ ] Ветка создана от свежей `main` (`git checkout main` → `git pull origin main` → `git checkout -b ...`) и обновлена перед PR
-- [ ] База собирается с нуля: `docker compose down -v` → `docker compose up -d --wait`
-- [ ] Автотесты проходят: `ALL TESTS PASSED`
-- [ ] `db/demo.sql` отрабатывает до конца
+- [ ] Локально прошло `bash scripts/check-db.sh` → `OK: database is demo-ready`
+- [ ] Проверка CI `db-check` в этом PR зелёная
 - [ ] Новые таблицы, процедуры и правила покрыты тестами; если менялось поведение, видное в демо, обновлён `db/demo.sql`
