@@ -2,6 +2,20 @@
 
 База данных PostgreSQL для Task 09 (госпитализация пациента в палату) и Lab 04 / Task 07 (оповещения медсестёр).
 
+## Правила работы с репозиторием
+
+Подробно с командами: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+1. **Ветка `main` всегда готова к демо.** В любой момент из `main` можно показать корректно работающий проект: база собирается с нуля (`docker compose down -v` и `docker compose up -d --wait`), автотесты проходят (`ALL TESTS PASSED`), `db/demo.sql` отрабатывает до конца. Незаконченная работа в `main` не попадает.
+2. **Все изменения — через Pull Request (PR).** Прямой push в `main` запрещён. Исключение — только `theleriz` (zanatrisat54@gmail.com).
+3. **Начинать работу от свежей `main`.** Перед новой функциональностью или новым документом обновите `main` и создайте ветку от неё, чтобы не было рассинхрона:
+
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feature/<название>
+   ```
+
 ## Структура
 
 ```
@@ -18,6 +32,9 @@ BIS/
 │   ├── docker/init.sql         # точка входа для Docker
 │   └── tests/
 │       └── test_hospital_ward.sql   # автотесты, всё откатывается в конце
+├── .github/
+│   └── pull_request_template.md     # чек-лист для каждого PR
+├── CONTRIBUTING.md             # правила работы с репозиторием
 └── README.md
 ```
 
