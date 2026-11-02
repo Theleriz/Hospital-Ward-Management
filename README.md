@@ -2,6 +2,16 @@
 
 База данных PostgreSQL для Task 09 (госпитализация пациента в палату) и Lab 04 / Task 07 (оповещения медсестёр).
 
+## Команда
+
+| Student ID | Участник | Роль |
+|---|---|---|
+| 24B031778 | Zhanserikuly Nurali | Data & Database |
+| 24B031691 | Bauyrzhanuly Kuanyshbek | Systems Analysis & Requirements |
+| 24B032123 | Shynbulat Kazbek | Architecture & Security |
+| 24B032104 | Chinaliyev Baigel | Acceptance Criteria & Testing |
+| 24B031775 | Rishat Zhanat | Application & Development |
+
 ## Правила работы с репозиторием
 
 Подробно с командами: [CONTRIBUTING.md](CONTRIBUTING.md).
