@@ -19,5 +19,25 @@ services:
       interval: 2s
       retries: 30
 
+  backend:
+    build: ./backend
+    container_name: medbase-backend
+    environment:
+      MEDBASE_DATABASE_URL: postgresql://medbase:medbase@db:5432/hospital_ward
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: medbase-frontend
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   medbase-data:

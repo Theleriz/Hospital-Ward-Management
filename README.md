@@ -30,7 +30,17 @@
 
 ```
 BIS/
-├── docker-compose.yml          # Postgres 17, создаёт и заполняет БД при первом запуске
+├── docker-compose.yml          # вся система: db (Postgres 17), backend, frontend
+├── backend/                    # FastAPI (Python 3.12)
+│   ├── app/main.py             # точка входа, /api/health
+│   ├── app/config.py           # настройки из переменных MEDBASE_*
+│   ├── app/db.py               # пул соединений с БД
+│   ├── tests/                  # pytest
+│   └── Dockerfile
+├── frontend/                   # React + TypeScript (Vite)
+│   ├── src/                    # приложение
+│   ├── nginx.conf              # в Docker: отдаёт сборку и проксирует /api в backend
+│   └── Dockerfile
 ├── db/
 │   ├── setup.sql               # полная установка: 01 → 02 → 03 → 04 (можно перезапускать)
 │   ├── 01_schema.sql           # таблицы, ключи, CHECK, индексы
@@ -64,11 +74,54 @@ BIS/
 
 ## Запуск
 
+Вся система (база, backend, интерфейс) поднимается одной командой:
+
 ```bash
-docker compose up -d --wait
+docker compose up -d --build --wait
 ```
 
-При первом запуске (пустой volume) контейнер сам выполнит `db/setup.sql`.
+| Что | Адрес |
+|---|---|
+| Интерфейс | http://localhost:8080 |
+| API | http://localhost:8080/api/… (через nginx) или http://localhost:8000/api/… (напрямую) |
+| Документация API (Swagger) | http://localhost:8080/api/docs |
+| Проверка состояния | http://localhost:8080/api/health |
+
+`--build` пересобирает backend и интерфейс после изменений в коде. Только база: `docker compose up -d --wait db`.
+
+### Разработка без Docker для backend и интерфейса
+
+База остаётся в Docker, а backend и интерфейс запускаются локально и перезагружаются при изменениях:
+
+```bash
+docker compose up -d --wait db
+```
+
+```bash
+cd backend
+python -m venv .venv
+.venv/Scripts/pip install -r requirements-dev.txt
+.venv/Scripts/uvicorn app.main:app --reload
+```
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Интерфейс откроется на http://localhost:5173, запросы к `/api` Vite передаёт в backend на порту 8000. На Linux и macOS вместо `.venv/Scripts/` пишется `.venv/bin/`.
+
+Тесты backend (нужна запущенная база):
+
+```bash
+cd backend
+.venv/Scripts/python -m pytest
+```
+
+### База данных
+
+При первом запуске (пустой volume) контейнер базы сам выполнит `db/setup.sql`.
 
 | Параметр | Значение |
 |---|---|
@@ -152,7 +205,7 @@ bash scripts/check-db.sh
 
 **Внимание:** скрипт пересоздаёт локальную базу (`docker compose down -v`), поэтому данные, введённые вручную, пропадут.
 
-Пока CI проверяет только базу данных. Проверки для новых компонентов добавляются по решению `theleriz`.
+Пока CI проверяет только базу данных: `check-db.sh` поднимает только сервис `db`. Проверка backend и интерфейса в CI — задача T-28 из [плана](docs/project-plan.md). Проверки для новых компонентов добавляются по решению `theleriz`.
 
 ## Типовые действия
 
