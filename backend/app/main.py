@@ -10,8 +10,11 @@ from contextlib import asynccontextmanager
 import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
+from app.config import settings
 from app.db import create_pool
+from app.routers import auth
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,18 @@ app = FastAPI(
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
 )
+
+# Signed session cookie: the browser cannot read (httponly) or alter it
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.session_secret,
+    session_cookie="medbase_session",
+    max_age=settings.session_max_age_seconds,
+    same_site="lax",
+    https_only=settings.session_https_only,
+)
+
+app.include_router(auth.router)
 
 
 @app.get("/api/health")
