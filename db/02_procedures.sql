@@ -67,7 +67,8 @@ BEGIN
     -- 5. Transfer: close the previous admission
     IF v_CurrentAdmissionID IS NOT NULL THEN
         UPDATE "Admission"
-        SET "Status" = 'Discharged'
+        SET "Status" = 'Discharged',
+            "DischargeDate" = CURRENT_DATE
         WHERE "AdmissionID" = v_CurrentAdmissionID;
 
         RAISE NOTICE 'Patient ID % transferred out of Ward ID %.', p_PatientID, v_CurrentWardID;
@@ -119,39 +120,268 @@ END;
 $$;
 
 --------------------------------------------------------------------------------
--- Procedure 3: sp_AcknowledgeAlert
--- Business Logic: Nurse acknowledging a high-priority alert (Lab 04 / Task 07 Main Action)
+-- Procedure 3: sp_DischargePatient
+-- Business Logic: closing the patient's active admission (UC-3)
+-- SECURITY DEFINER: same reason as sp_AdmitPatient (row locks).
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_DischargePatient(
+    p_PatientID INT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_AdmissionID INT;
+    v_WardID INT;
+BEGIN
+    -- 1. Verify Patient existence (lock the row to serialize with admissions)
+    PERFORM 1 FROM "Patient" WHERE "PatientID" = p_PatientID FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Patient ID % does not exist.', p_PatientID;
+    END IF;
+
+    -- 2. Find the active admission
+    SELECT "AdmissionID", "WardID" INTO v_AdmissionID, v_WardID
+    FROM "Admission"
+    WHERE "PatientID" = p_PatientID AND "Status" = 'Active'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Patient ID % has no active admission.', p_PatientID;
+    END IF;
+
+    -- 3. Close it
+    UPDATE "Admission"
+    SET "Status" = 'Discharged',
+        "DischargeDate" = CURRENT_DATE
+    WHERE "AdmissionID" = v_AdmissionID;
+
+    RAISE NOTICE 'Patient ID % discharged from Ward ID %.', p_PatientID, v_WardID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 4: sp_RaiseAlert
+-- Business Logic: a patient monitor or call button raises an alert (UC-5)
+-- The backend chooses the nurse; the procedure re-checks that the choice is
+-- valid (decisions.md, record 5). p_NurseID may be NULL when nobody in the ward
+-- is on shift: such an alert is left for escalation.
+-- Returns the new alert number in p_AlertID.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_RaiseAlert(
+    p_WardID INT,
+    p_PatientID INT,
+    p_Source VARCHAR,
+    p_Priority VARCHAR,
+    p_Description TEXT,
+    p_NurseID VARCHAR,
+    INOUT p_AlertID VARCHAR DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_NurseStatus VARCHAR(20);
+BEGIN
+    -- 1. Verify Ward existence
+    PERFORM 1 FROM "Ward" WHERE "WardID" = p_WardID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    -- 2. The patient (if any) must be admitted to this ward right now
+    IF p_PatientID IS NOT NULL THEN
+        PERFORM 1 FROM "Admission"
+        WHERE "PatientID" = p_PatientID AND "WardID" = p_WardID AND "Status" = 'Active';
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Patient ID % is not admitted to Ward ID %.', p_PatientID, p_WardID;
+        END IF;
+    END IF;
+
+    -- 3. The nurse (if any) must exist, be on shift and work in this ward
+    IF p_NurseID IS NOT NULL THEN
+        SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_NurseID;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
+        END IF;
+
+        IF v_NurseStatus = 'OffShift' THEN
+            RAISE EXCEPTION 'Nurse % is off shift.', p_NurseID;
+        END IF;
+
+        PERFORM 1 FROM "NurseAssignment" WHERE "NurseID" = p_NurseID AND "WardID" = p_WardID;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Nurse % is not assigned to Ward ID %.', p_NurseID, p_WardID;
+        END IF;
+    END IF;
+
+    -- 4. Create the alert (the trigger logs CREATED and ASSIGNED)
+    INSERT INTO "WardAlert" ("WardID", "PatientID", "Source", "Priority", "Description", "AssignedNurseID")
+    VALUES (p_WardID, p_PatientID, p_Source, p_Priority, p_Description, p_NurseID)
+    RETURNING "AlertID" INTO p_AlertID;
+
+    RAISE NOTICE 'Alert % (%) raised in Ward ID %.', p_AlertID, p_Priority, p_WardID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 5: sp_EscalateAlert
+-- Business Logic: forwarding an unacknowledged alert to another nurse (UC-7)
+-- The backend finds overdue alerts and picks the nurse; the procedure re-checks
+-- the escalation rules (decisions.md, records 1 and 5):
+-- only PENDING HIGH/CRITICAL alerts, at least 30 seconds old, to an Available nurse.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_EscalateAlert(
+    p_AlertID VARCHAR,
+    p_ToNurseID VARCHAR
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_Alert "WardAlert"%ROWTYPE;
+    v_NurseStatus VARCHAR(20);
+    v_AgeSeconds INT;
+BEGIN
+    -- 1. Verify Alert existence (lock it so a parallel acknowledgement waits)
+    SELECT * INTO v_Alert FROM "WardAlert" WHERE "AlertID" = p_AlertID FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Alert ID % does not exist.', p_AlertID;
+    END IF;
+
+    -- 2. Escalation rules
+    IF v_Alert."Status" <> 'PENDING' THEN
+        RAISE EXCEPTION 'Alert ID % is not pending (status %).', p_AlertID, v_Alert."Status";
+    END IF;
+
+    IF v_Alert."Priority" = 'LOW' THEN
+        RAISE EXCEPTION 'Alert ID % has priority LOW; only HIGH and CRITICAL alerts are escalated.', p_AlertID;
+    END IF;
+
+    v_AgeSeconds := EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - v_Alert."CreatedAt")::INT;
+    IF v_AgeSeconds < 30 THEN
+        RAISE EXCEPTION 'Alert ID % is not overdue yet (% s old, escalation after 30 s).', p_AlertID, v_AgeSeconds;
+    END IF;
+
+    -- 3. Target nurse must exist, be Available and differ from the assigned nurse
+    SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_ToNurseID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_ToNurseID;
+    END IF;
+
+    IF v_NurseStatus <> 'Available' THEN
+        RAISE EXCEPTION 'Nurse % is not Available (status %).', p_ToNurseID, v_NurseStatus;
+    END IF;
+
+    IF p_ToNurseID = v_Alert."AssignedNurseID" THEN
+        RAISE EXCEPTION 'Nurse % is already assigned to alert %.', p_ToNurseID, p_AlertID;
+    END IF;
+
+    -- 4. Escalate (the trigger logs ESCALATED)
+    UPDATE "WardAlert"
+    SET "Status" = 'ESCALATED',
+        "EscalatedToNurseID" = p_ToNurseID,
+        "EscalatedAt" = CURRENT_TIMESTAMP,
+        "UpdatedAt" = CURRENT_TIMESTAMP
+    WHERE "AlertID" = p_AlertID;
+
+    RAISE NOTICE 'Alert ID % escalated to Nurse %.', p_AlertID, p_ToNurseID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 6: sp_AcknowledgeAlert
+-- Business Logic: Nurse acknowledging an alert (UC-6, Lab 04 / Task 07 Main Action)
+-- Allowed for the assigned nurse, the nurse it was escalated to, or any nurse
+-- of the alert's ward who is on shift. The assigned nurse is not overwritten.
+-- Acknowledging an already acknowledged alert is a no-op.
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE sp_AcknowledgeAlert(
     p_AlertID VARCHAR,
     p_NurseID VARCHAR
 )
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
-    v_AlertStatus VARCHAR(20);
+    v_Alert "WardAlert"%ROWTYPE;
+    v_NurseStatus VARCHAR(20);
 BEGIN
-    -- 1. Verify Alert existence
-    SELECT "Status" INTO v_AlertStatus
-    FROM "WardAlert"
-    WHERE "AlertID" = p_AlertID;
+    -- 1. Verify Alert existence (lock it so a parallel escalation waits)
+    SELECT * INTO v_Alert FROM "WardAlert" WHERE "AlertID" = p_AlertID FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Alert ID % does not exist.', p_AlertID;
     END IF;
 
-    -- 2. Update status if pending/escalated
-    IF v_AlertStatus = 'ACKNOWLEDGED' THEN
+    IF v_Alert."Status" = 'ACKNOWLEDGED' THEN
         RAISE NOTICE 'Alert ID % is already acknowledged.', p_AlertID;
         RETURN;
     END IF;
 
+    -- 2. Nurse must exist and be on shift
+    SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_NurseID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
+    END IF;
+
+    IF v_NurseStatus = 'OffShift' THEN
+        RAISE EXCEPTION 'Nurse % is off shift.', p_NurseID;
+    END IF;
+
+    -- 3. Nurse must be responsible for the alert
+    IF p_NurseID IS DISTINCT FROM v_Alert."AssignedNurseID"
+       AND p_NurseID IS DISTINCT FROM v_Alert."EscalatedToNurseID"
+       AND NOT EXISTS (SELECT 1 FROM "NurseAssignment"
+                       WHERE "NurseID" = p_NurseID AND "WardID" = v_Alert."WardID") THEN
+        RAISE EXCEPTION 'Nurse % cannot acknowledge alert % (not assigned to it or to Ward ID %).',
+            p_NurseID, p_AlertID, v_Alert."WardID";
+    END IF;
+
+    -- 4. Acknowledge (the trigger logs ACKNOWLEDGED)
     UPDATE "WardAlert"
     SET "Status" = 'ACKNOWLEDGED',
-        "NurseID" = p_NurseID,
+        "AcknowledgedByNurseID" = p_NurseID,
+        "AcknowledgedAt" = CURRENT_TIMESTAMP,
         "UpdatedAt" = CURRENT_TIMESTAMP
     WHERE "AlertID" = p_AlertID;
 
     RAISE NOTICE 'Alert ID % successfully acknowledged by Nurse %.', p_AlertID, p_NurseID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 7: sp_SetNurseStatus
+-- Business Logic: a nurse switches between Available / Busy / OffShift
+-- (Available nurses are escalation targets). Invalid statuses fail on the CHECK.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_SetNurseStatus(
+    p_NurseID VARCHAR,
+    p_Status VARCHAR
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    UPDATE "Nurse" SET "Status" = p_Status WHERE "NurseID" = p_NurseID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
+    END IF;
+
+    RAISE NOTICE 'Nurse % is now %.', p_NurseID, p_Status;
 END;
 $$;
