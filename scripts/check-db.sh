@@ -26,7 +26,8 @@ fail() { echo; echo "FAIL: $*"; exit 1; }
 
 step "1. Build database from scratch"
 docker compose down -v --remove-orphans
-docker compose up -d --wait
+# Only the database: backend and frontend have their own checks
+docker compose up -d --wait db
 
 init_log=$(docker logs "$CONTAINER" 2>&1)
 grep -q '>> Database ready' <<<"$init_log" || { echo "$init_log"; fail "setup.sql did not finish on init"; }
