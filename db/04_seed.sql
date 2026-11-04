@@ -18,18 +18,24 @@
 --   NURSE-05  badge BADGE-1005  PIN 5555  OffShift   ward 104
 --   NURSE-10  badge BADGE-1010  PIN 1010  Available  head nurse, no ward
 --
+-- Other staff accounts (test PINs, for development only):
+--   ADM-01    badge BADGE-2001  PIN 2001  Admissions
+--   ADM-02    badge BADGE-2002  PIN 2002  Admissions   inactive (cannot log in)
+--   STAFF-01  badge BADGE-3001  PIN 3001  PublicStaff
+--
 -- Alerts:
 --   ALT-1001  CRITICAL  PENDING       ward 101  5 min old -> overdue, can be escalated
 --   ALT-1002  HIGH      ACKNOWLEDGED  ward 102  acknowledged by NURSE-02 after 12 s
 --   ALT-1003  CRITICAL  ESCALATED     ward 101  NURSE-01 -> NURSE-03, not acknowledged
 --   ALT-1004  LOW       ACKNOWLEDGED  ward 102  acknowledged by NURSE-03 after 45 s
 --   ALT-1005  HIGH      PENDING       ward 102  10 s old right after seeding -> not overdue yet
---   ALT-1006  HIGH      ACKNOWLEDGED  ward 101  escalated to NURSE-04, acknowledged by her
+--   ALT-1006  HIGH      ACKNOWLEDGED  ward 101  escalated to NURSE-04, acknowledged by NURSE-04
 -- The AlertEvent journal is filled by the trigger on WardAlert (17 events).
 -- =============================================================================
 
 -- Clear existing data and reset sequence counters
-TRUNCATE TABLE "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "Admission", "Ward", "Patient"
+TRUNCATE TABLE "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "StaffAccount",
+    "Admission", "Ward", "Patient"
     RESTART IDENTITY CASCADE;
 
 -- -----------------------------------------------------------------------------
@@ -80,6 +86,12 @@ INSERT INTO "Nurse" ("NurseID", "FullName", "BadgeID", "PinHash", "Role", "Statu
 ('NURSE-04', 'Aliya Nurlanova', 'BADGE-1004', crypt('4444', gen_salt('bf')), 'Nurse', 'Available'),
 ('NURSE-05', 'Saule Bekova', 'BADGE-1005', crypt('5555', gen_salt('bf')), 'Nurse', 'OffShift'),
 ('NURSE-10', 'Gulnara Akhmetova', 'BADGE-1010', crypt('1010', gen_salt('bf')), 'HeadNurse', 'Available');
+
+-- Other staff (admissions, public staff)
+INSERT INTO "StaffAccount" ("AccountID", "FullName", "BadgeID", "PinHash", "Role", "IsActive") VALUES
+('ADM-01', 'Erlan Abenov', 'BADGE-2001', crypt('2001', gen_salt('bf')), 'Admissions', TRUE),
+('ADM-02', 'Former Employee', 'BADGE-2002', crypt('2002', gen_salt('bf')), 'Admissions', FALSE),
+('STAFF-01', 'Marat Seitov', 'BADGE-3001', crypt('3001', gen_salt('bf')), 'PublicStaff', TRUE);
 
 -- -----------------------------------------------------------------------------
 -- 5. SEED NURSE ASSIGNMENTS (one primary nurse per ward)

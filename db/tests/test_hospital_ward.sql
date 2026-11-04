@@ -581,5 +581,62 @@ CALL pg_temp.expect_error('alert service cannot change alerts directly',
     'permission denied%', 'medbase_alert_service');
 
 -- -----------------------------------------------------------------------------
+-- 11. Staff login (fn_AuthenticateStaff) and the backend role medbase_api
+-- -----------------------------------------------------------------------------
+CALL pg_temp.expect_true('seed: 3 staff accounts, 1 inactive', $q$
+    SELECT COUNT(*) = 3 AND COUNT(*) FILTER (WHERE NOT "IsActive") = 1 FROM "StaffAccount" $q$);
+
+CALL pg_temp.expect_error('StaffAccount.Role only Admissions/PublicStaff', $q$
+    UPDATE "StaffAccount" SET "Role" = 'Nurse' WHERE "AccountID" = 'ADM-01' $q$,
+    '%violates check constraint%');
+
+CALL pg_temp.expect_error('StaffAccount.PinHash rejects a plain-text PIN', $q$
+    UPDATE "StaffAccount" SET "PinHash" = '2001' WHERE "AccountID" = 'ADM-01' $q$,
+    '%violates check constraint "CK_StaffAccount_PinIsBcrypt"%');
+
+CALL pg_temp.expect_error('a nurse badge cannot be given to a staff account', $q$
+    INSERT INTO "StaffAccount" ("AccountID", "FullName", "BadgeID", "PinHash", "Role")
+    VALUES ('ADM-99', 'Dup Badge', 'BADGE-1001', crypt('9999', gen_salt('bf')), 'Admissions') $q$,
+    'Badge BADGE-1001 is already assigned to another person%');
+
+CALL pg_temp.expect_error('a staff badge cannot be given to a nurse', $q$
+    UPDATE "Nurse" SET "BadgeID" = 'BADGE-2001' WHERE "NurseID" = 'NURSE-01' $q$,
+    'Badge BADGE-2001 is already assigned to another person%');
+
+CALL pg_temp.expect_true('login: nurse with correct PIN', $q$
+    SELECT array_agg(ROW("AccountID", "Role")::TEXT) = ARRAY['(NURSE-01,Nurse)']
+    FROM fn_AuthenticateStaff('BADGE-1001', '1111') $q$);
+
+CALL pg_temp.expect_true('login: head nurse with correct PIN', $q$
+    SELECT array_agg(ROW("AccountID", "Role")::TEXT) = ARRAY['(NURSE-10,HeadNurse)']
+    FROM fn_AuthenticateStaff('BADGE-1010', '1010') $q$);
+
+CALL pg_temp.expect_true('login: admissions staff with correct PIN', $q$
+    SELECT array_agg(ROW("AccountID", "Role")::TEXT) = ARRAY['(ADM-01,Admissions)']
+    FROM fn_AuthenticateStaff('BADGE-2001', '2001') $q$);
+
+CALL pg_temp.expect_true('login: wrong PIN, unknown badge and inactive account return nothing', $q$
+    SELECT NOT EXISTS (SELECT 1 FROM fn_AuthenticateStaff('BADGE-1001', '0000'))
+       AND NOT EXISTS (SELECT 1 FROM fn_AuthenticateStaff('BADGE-9999', '1111'))
+       AND NOT EXISTS (SELECT 1 FROM fn_AuthenticateStaff('BADGE-2002', '2002')) $q$);
+
+CALL pg_temp.expect_error('login function is not available to user roles',
+    $q$ SELECT * FROM fn_AuthenticateStaff('BADGE-1001', '1111') $q$,
+    'permission denied%', 'medbase_public_staff');
+
+CALL pg_temp.expect_ok('backend role can run the login function',
+    $q$ SELECT * FROM fn_AuthenticateStaff('BADGE-1001', '1111') $q$, 'medbase_api');
+
+CALL pg_temp.expect_error('backend role on its own cannot read patients',
+    $q$ SELECT * FROM "Patient" $q$, 'permission denied%', 'medbase_api');
+
+CALL pg_temp.expect_error('backend role cannot read PIN hashes of staff accounts',
+    $q$ SELECT "PinHash" FROM "StaffAccount" $q$, 'permission denied%', 'medbase_api');
+
+CALL pg_temp.expect_true('backend role can switch to every user role but inherits none of them', $q$
+    SELECT bool_and(pg_has_role('medbase_api', r, 'SET') AND NOT pg_has_role('medbase_api', r, 'USAGE'))
+    FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_alert_service']) r $q$);
+
+-- -----------------------------------------------------------------------------
 DO $$ BEGIN RAISE INFO 'ALL TESTS PASSED'; END $$;
 ROLLBACK;

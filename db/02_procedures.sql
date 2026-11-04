@@ -385,3 +385,30 @@ BEGIN
     RAISE NOTICE 'Nurse % is now %.', p_NurseID, p_Status;
 END;
 $$;
+
+--------------------------------------------------------------------------------
+-- Function 8: fn_AuthenticateStaff
+-- Login with badge + PIN (Lab 05; the badge reader types the badge ID).
+-- Returns the account (nurse or other staff) when the PIN matches, otherwise
+-- no rows. The PIN is compared with the bcrypt hash inside the database, so no
+-- application role ever needs to read PIN hashes.
+-- SECURITY DEFINER: callers have no access to "PinHash".
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_AuthenticateStaff(
+    p_BadgeID VARCHAR,
+    p_Pin VARCHAR
+)
+RETURNS TABLE ("AccountID" VARCHAR, "FullName" VARCHAR, "Role" VARCHAR)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+    SELECT n."NurseID", n."FullName", n."Role"
+    FROM "Nurse" n
+    WHERE n."BadgeID" = p_BadgeID AND n."PinHash" = crypt(p_Pin, n."PinHash")
+    UNION ALL
+    SELECT s."AccountID", s."FullName", s."Role"
+    FROM "StaffAccount" s
+    WHERE s."BadgeID" = p_BadgeID AND s."IsActive" AND s."PinHash" = crypt(p_Pin, s."PinHash");
+$$;

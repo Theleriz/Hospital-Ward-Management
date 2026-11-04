@@ -39,8 +39,17 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_alert_service') THEN
         CREATE ROLE medbase_alert_service NOLOGIN;  -- escalation worker, device simulator
     END IF;
+    -- The backend logs in as medbase_api. NOINHERIT: on its own it has no access to
+    -- the data; for every request it switches (SET ROLE) to the role of the signed-in
+    -- user, so the database checks rights again (decisions.md, record 5).
+    -- The password is for local development only.
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_api') THEN
+        CREATE ROLE medbase_api LOGIN NOINHERIT PASSWORD 'medbase_api';
+    END IF;
 END;
 $$;
+
+GRANT medbase_admissions, medbase_public_staff, medbase_nurse, medbase_alert_service TO medbase_api;
 
 -- Procedures are executable by PUBLIC by default; restrict all of them
 REVOKE EXECUTE ON PROCEDURE sp_AdmitPatient(INT, INT) FROM PUBLIC;
@@ -76,3 +85,7 @@ GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_ale
 GRANT SELECT ("PatientID", "WardID", "Status") ON "Admission" TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR, VARCHAR) TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) TO medbase_alert_service;
+
+-- Login: only the backend checks badge + PIN; nobody reads PIN hashes
+REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) TO medbase_api;
