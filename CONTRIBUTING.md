@@ -67,6 +67,24 @@ git checkout feature/doctor-table
 git merge main
 ```
 
+## 4. Соавторство в коммитах
+
+У каждой задачи в [плане проекта](docs/project-plan.md#7-задачи) есть **область** — роль участника, который за неё отвечает. Автор коммита — тот, кто его написал, а владелец области задачи указывается **соавтором** строкой `Co-authored-by` в конце сообщения коммита. Если автор и владелец области — один человек, строка не нужна.
+
+```bash
+git commit -m "Add Nurse table" -m "Co-authored-by: Nurali-Zhanserik <195541084+Nurali-Zhanserik@users.noreply.github.com>"
+```
+
+Строки для копирования (адреса привязаны к профилям GitHub):
+
+| Область | Соавтор |
+|---|---|
+| Data & Database | `Co-authored-by: Nurali-Zhanserik <195541084+Nurali-Zhanserik@users.noreply.github.com>` |
+| Systems Analysis & Requirements | `Co-authored-by: Kuanyshbek06 <195081148+Kuanyshbek06@users.noreply.github.com>` |
+| Architecture & Security | `Co-authored-by: Kazbekio <195290924+Kazbekio@users.noreply.github.com>` |
+| Acceptance Criteria & Testing | `Co-authored-by: Ba1igel <194759793+Ba1igel@users.noreply.github.com>` |
+| Application & Development | `Co-authored-by: Theleriz <87689782+Theleriz@users.noreply.github.com>` |
+
 ## Документы
 
 Документы подчиняются тем же трём правилам, что и код: ветка от свежей `main` (префикс `docs/`) и PR.

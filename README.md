@@ -4,13 +4,13 @@
 
 ## Команда
 
-| Student ID | Участник | Роль |
-|---|---|---|
-| 24B031778 | Zhanserikuly Nurali | Data & Database |
-| 24B031691 | Bauyrzhanuly Kuanyshbek | Systems Analysis & Requirements |
-| 24B032123 | Shynbulat Kazbek | Architecture & Security |
-| 24B032104 | Chinaliyev Baigel | Acceptance Criteria & Testing |
-| 24B031775 | Rishat Zhanat | Application & Development |
+| Student ID | Участник | GitHub | Роль |
+|---|---|---|---|
+| 24B031778 | Zhanserikuly Nurali | [Nurali-Zhanserik](https://github.com/Nurali-Zhanserik) | Data & Database |
+| 24B031691 | Bauyrzhanuly Kuanyshbek | [Kuanyshbek06](https://github.com/Kuanyshbek06) | Systems Analysis & Requirements |
+| 24B032123 | Shynbulat Kazbek | [Kazbekio](https://github.com/Kazbekio) | Architecture & Security |
+| 24B032104 | Chinaliyev Baigel | [Ba1igel](https://github.com/Ba1igel) | Acceptance Criteria & Testing |
+| 24B031775 | Rishat Zhanat | [TheLeriz](https://github.com/Theleriz) | **Lead проекта**, Application & Development |
 
 ## Правила работы с репозиторием
 
