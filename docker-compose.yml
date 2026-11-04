@@ -23,7 +23,10 @@ services:
     build: ./backend
     container_name: medbase-backend
     environment:
-      MEDBASE_DATABASE_URL: postgresql://medbase:medbase@db:5432/hospital_ward
+      # medbase_api: no data access of its own, switches to the user's role per request
+      MEDBASE_DATABASE_URL: postgresql://medbase_api:medbase_api@db:5432/hospital_ward
+      # Development value; set a long random secret for any real installation
+      MEDBASE_SESSION_SECRET: dev-only-session-secret-change-me
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

@@ -4,6 +4,7 @@
   --text: #1c2430;
   --muted: #5b6575;
   --border: #dde1e7;
+  --accent: #1d5fbf;
   --ok: #1f7a4d;
   --ok-bg: #e3f4ea;
   --down: #b42318;
@@ -29,11 +30,95 @@ body {
   color: var(--muted);
 }
 
-.status {
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.role {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 20px;
+  padding: 8px 20px 16px;
+}
+
+.login {
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login h2 {
+  margin-bottom: 0;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+input {
+  font: inherit;
+  color: var(--text);
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+button {
+  font: inherit;
+  padding: 8px 16px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button.secondary {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.error {
+  margin: 0;
+  color: var(--down);
 }
 
 .status-row {
