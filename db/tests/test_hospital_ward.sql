@@ -92,6 +92,20 @@ CALL pg_temp.expect_error('Ward.WardType is required', $q$
     INSERT INTO "Ward" VALUES (200, 'Bad Ward', 1, 2, NULL) $q$,
     '%violates not-null constraint%');
 
+-- WardType validation: allowed values must be accepted
+CALL pg_temp.expect_ok('Ward.WardType accepts a valid category', $q$
+    INSERT INTO "Ward"
+        ("WardID", "WardName", "FloorNum", "Capacity", "WardType")
+    VALUES (201, 'Test Surgery Ward', 2, 5, 'Surgery')
+$q$);
+
+-- WardType validation: unknown values must be rejected
+CALL pg_temp.expect_error('Ward.WardType rejects an invalid category', $q$
+    INSERT INTO "Ward"
+        ("WardID", "WardName", "FloorNum", "Capacity", "WardType")
+    VALUES (202, 'Test Invalid Ward', 2, 5, 'RandomType')
+$q$, '%violates check constraint "CK_Ward_ValidType"%');
+
 CALL pg_temp.expect_error('Patient.DOB is required', $q$
     INSERT INTO "Patient" ("FullName", "Phone") VALUES ('No DOB', '+70000000001') $q$,
     '%violates not-null constraint%');

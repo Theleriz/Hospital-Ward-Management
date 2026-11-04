@@ -30,6 +30,13 @@ CREATE TABLE "Ward" (
     "FloorNum" INT NOT NULL,
     "Capacity" INT NOT NULL CHECK ("Capacity" > 0),
     "WardType" VARCHAR(50) NOT NULL
+    CONSTRAINT "CK_Ward_ValidType"
+    CHECK ("WardType" IN (
+        'Intensive Care',
+        'General Medicine',
+        'Surgery',
+        'Emergency'
+    ))
 );
 
 -- Table: Admission (Bridge Table for Patients <-> Wards)
