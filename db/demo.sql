@@ -24,12 +24,15 @@
 
 -- -----------------------------------------------------------------------------
 \echo
-\echo '--- STEP 1. Tables (Patient, Ward, Admission + WardAlert) ---'
+\echo '--- STEP 1. Tables: beds (Patient, Ward, Admission) and alerts (Nurse, NurseAssignment, WardAlert, AlertEvent) ---'
 \dt
 SELECT 'Patient' AS "Table", COUNT(*) AS "Rows" FROM "Patient"
 UNION ALL SELECT 'Ward', COUNT(*) FROM "Ward"
 UNION ALL SELECT 'Admission', COUNT(*) FROM "Admission"
-UNION ALL SELECT 'WardAlert', COUNT(*) FROM "WardAlert";
+UNION ALL SELECT 'Nurse', COUNT(*) FROM "Nurse"
+UNION ALL SELECT 'NurseAssignment', COUNT(*) FROM "NurseAssignment"
+UNION ALL SELECT 'WardAlert', COUNT(*) FROM "WardAlert"
+UNION ALL SELECT 'AlertEvent', COUNT(*) FROM "AlertEvent";
 \prompt 'Press Enter...' _
 
 -- -----------------------------------------------------------------------------
@@ -82,14 +85,20 @@ INSERT INTO "Admission" ("PatientID", "WardID") VALUES (1, 104);
 
 -- -----------------------------------------------------------------------------
 \echo
-\echo '--- STEP 6. Transfer: move Kuanyshbek (ID 3) from Ward 102 to Surgery Ward 103 ---'
+\echo '--- STEP 6. Transfer: move Kuanyshbek (ID 3) from Ward 102 to Surgery Ward 103, then discharge ---'
 \echo 'Before:'
-SELECT "AdmissionID", "WardID", "AdmitDate", "Status"
+SELECT "AdmissionID", "WardID", "AdmitDate", "DischargeDate", "Status"
 FROM "Admission" WHERE "PatientID" = 3 ORDER BY "AdmissionID";
 CALL sp_AdmitPatient(3, 103);
 \echo 'After (old admission closed automatically, only one Active):'
-SELECT "AdmissionID", "WardID", "AdmitDate", "Status"
+SELECT "AdmissionID", "WardID", "AdmitDate", "DischargeDate", "Status"
 FROM "Admission" WHERE "PatientID" = 3 ORDER BY "AdmissionID";
+\echo 'Discharge Kuanyshbek (ID 3):'
+CALL sp_DischargePatient(3);
+SELECT "AdmissionID", "WardID", "AdmitDate", "DischargeDate", "Status"
+FROM "Admission" WHERE "PatientID" = 3 ORDER BY "AdmissionID";
+\echo 'Discharging again -> rejected (no active admission):'
+CALL sp_DischargePatient(3);
 \prompt 'Press Enter...' _
 
 -- -----------------------------------------------------------------------------
@@ -108,14 +117,33 @@ WHERE p."Phone" IN ('+77015550109', '+77015550110');
 
 -- -----------------------------------------------------------------------------
 \echo
-\echo '--- STEP 8. Nurse workstation (Lab 04): acknowledge a CRITICAL alert ---'
+\echo '--- STEP 8. Nurse workstation (Lab 04): alert, escalation after 30 s, acknowledgement ---'
 \echo 'Open alerts:'
-SELECT "AlertID", "Priority", "Status", "NurseID"
+SELECT "AlertID", "Priority", "Status", "WardID", "AssignedNurseID", "EscalatedToNurseID",
+       EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - "CreatedAt")::INT AS "AgeSeconds"
 FROM "WardAlert" WHERE "Status" <> 'ACKNOWLEDGED' ORDER BY "AlertID";
+\echo 'a) Monitor of patient 1 raises a CRITICAL alert, sent to the primary nurse of Ward 101:'
+CALL sp_RaiseAlert(101, 1, 'MONITOR', 'CRITICAL', 'SpO2 83%', 'NURSE-01', NULL);
+\echo 'b) Escalating a fresh alert -> rejected (escalation only after 30 s):'
+CALL sp_EscalateAlert('ALT-1007', 'NURSE-03');
+\echo 'c) ALT-1001 is 5 minutes old and still PENDING. Escalate to a Busy nurse -> rejected:'
+CALL sp_EscalateAlert('ALT-1001', 'NURSE-02');
+\echo '   Escalate to Available NURSE-03 -> accepted:'
+CALL sp_EscalateAlert('ALT-1001', 'NURSE-03');
+\echo 'd) NURSE-04 works in another ward -> cannot acknowledge:'
+CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-04');
+\echo '   NURSE-03 acknowledges:'
 CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-03');
-\echo 'Open alerts after acknowledgement:'
-SELECT "AlertID", "Priority", "Status", "NurseID"
-FROM "WardAlert" WHERE "Status" <> 'ACKNOWLEDGED' ORDER BY "AlertID";
+\echo 'e) Journal of ALT-1001 (written by a trigger, cannot be changed):'
+SELECT "OccurredAt", "EventType", "NurseID"
+FROM "AlertEvent" WHERE "AlertID" = 'ALT-1001' ORDER BY "EventID";
+\echo '   Deleting the journal -> rejected:'
+DELETE FROM "AlertEvent" WHERE "AlertID" = 'ALT-1001';
+\echo 'f) Head nurse report: response time of acknowledged alerts:'
+SELECT "AlertID", "Priority", "AssignedNurseID", "AcknowledgedByNurseID",
+       "AcknowledgedAt" - "CreatedAt" AS "ResponseTime",
+       "EscalatedToNurseID" IS NOT NULL AS "WasEscalated"
+FROM "WardAlert" WHERE "Status" = 'ACKNOWLEDGED' ORDER BY "CreatedAt";
 \prompt 'Press Enter...' _
 
 -- -----------------------------------------------------------------------------
