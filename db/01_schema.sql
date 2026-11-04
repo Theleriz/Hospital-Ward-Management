@@ -16,6 +16,8 @@ DROP PROCEDURE IF EXISTS sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR
 DROP PROCEDURE IF EXISTS sp_EscalateAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_AcknowledgeAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_SetNurseStatus(VARCHAR, VARCHAR);
+DROP FUNCTION IF EXISTS fn_AuthenticateStaff(VARCHAR, VARCHAR);
+DROP TABLE IF EXISTS "StaffAccount" CASCADE;
 DROP TABLE IF EXISTS "AlertEvent" CASCADE;
 DROP TABLE IF EXISTS "WardAlert" CASCADE;
 DROP TABLE IF EXISTS "NurseAssignment" CASCADE;
@@ -25,6 +27,7 @@ DROP TABLE IF EXISTS "Ward" CASCADE;
 DROP TABLE IF EXISTS "Patient" CASCADE;
 DROP FUNCTION IF EXISTS fn_LogAlertEvents();
 DROP FUNCTION IF EXISTS fn_AlertEventIsAppendOnly();
+DROP FUNCTION IF EXISTS fn_BadgeIsUnique();
 
 -- Table: Patient
 CREATE TABLE "Patient" (
@@ -97,6 +100,41 @@ CREATE TABLE "NurseAssignment" (
 CREATE UNIQUE INDEX "UX_NurseAssignment_OnePrimaryPerWard"
     ON "NurseAssignment" ("WardID")
     WHERE "IsPrimary";
+
+-- Table: StaffAccount (logins of staff who are not nurses: admissions, other staff)
+-- Nurses log in with the badge and PIN stored in "Nurse"
+CREATE TABLE "StaffAccount" (
+    "AccountID" VARCHAR(20) PRIMARY KEY,
+    "FullName" VARCHAR(100) NOT NULL,
+    "BadgeID" VARCHAR(32) NOT NULL UNIQUE,
+    "PinHash" TEXT NOT NULL CONSTRAINT "CK_StaffAccount_PinIsBcrypt" CHECK ("PinHash" ~ '^\$2[aby]\$\d{2}\$.{53}$'),
+    "Role" VARCHAR(20) NOT NULL CHECK ("Role" IN ('Admissions', 'PublicStaff')),
+    "IsActive" BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- A badge identifies exactly one person across "Nurse" and "StaffAccount"
+CREATE FUNCTION fn_BadgeIsUnique()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF (TG_TABLE_NAME = 'Nurse'
+        AND EXISTS (SELECT 1 FROM "StaffAccount" WHERE "BadgeID" = NEW."BadgeID"))
+       OR (TG_TABLE_NAME = 'StaffAccount'
+           AND EXISTS (SELECT 1 FROM "Nurse" WHERE "BadgeID" = NEW."BadgeID")) THEN
+        RAISE EXCEPTION 'Badge % is already assigned to another person.', NEW."BadgeID";
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER "TR_Nurse_BadgeIsUnique"
+    BEFORE INSERT OR UPDATE OF "BadgeID" ON "Nurse"
+    FOR EACH ROW EXECUTE FUNCTION fn_BadgeIsUnique();
+
+CREATE TRIGGER "TR_StaffAccount_BadgeIsUnique"
+    BEFORE INSERT OR UPDATE OF "BadgeID" ON "StaffAccount"
+    FOR EACH ROW EXECUTE FUNCTION fn_BadgeIsUnique();
 
 -- Table: WardAlert (patient-care alerts for the nurse workstation, Lab 04 / Task 07)
 -- The assigned nurse is kept separately from the nurse who acknowledged the alert,
