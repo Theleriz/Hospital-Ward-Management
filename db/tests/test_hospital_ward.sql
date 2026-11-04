@@ -510,6 +510,76 @@ CALL pg_temp.expect_error('admissions staff cannot delete patients',
 CALL pg_temp.expect_error('admissions staff cannot change ward capacity',
     $q$ UPDATE "Ward" SET "Capacity" = 10 WHERE "WardID" = 101 $q$, 'permission denied%', 'medbase_admissions');
 
+CALL pg_temp.expect_ok('admissions staff can discharge patients',
+    $q$ CALL sp_DischargePatient(8) $q$, 'medbase_admissions');
+
+CALL pg_temp.expect_error('public staff cannot discharge patients',
+    $q$ CALL sp_DischargePatient(1) $q$, 'permission denied%', 'medbase_public_staff');
+
+-- Alerts: nobody but nurses acknowledges, nobody writes alert tables directly
+CALL pg_temp.expect_error('public staff cannot read alerts',
+    $q$ SELECT * FROM "WardAlert" $q$, 'permission denied%', 'medbase_public_staff');
+
+CALL pg_temp.expect_error('public staff cannot acknowledge alerts',
+    $q$ CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'permission denied%', 'medbase_public_staff');
+
+CALL pg_temp.expect_error('admissions staff cannot acknowledge alerts',
+    $q$ CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'permission denied%', 'medbase_admissions');
+
+CALL pg_temp.expect_ok('nurse can read alerts and the journal',
+    $q$ SELECT * FROM "WardAlert" JOIN "AlertEvent" USING ("AlertID") $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_ok('nurse can read nurse names and statuses',
+    $q$ SELECT "NurseID", "FullName", "Role", "Status" FROM "Nurse" $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot read PIN hashes',
+    $q$ SELECT "PinHash" FROM "Nurse" $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot read patient phone numbers',
+    $q$ SELECT "Phone" FROM "Patient" $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_ok('nurse can acknowledge alerts',
+    $q$ CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_ok('nurse can change own status',
+    $q$ CALL sp_SetNurseStatus('NURSE-02', 'Busy') $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot change alerts directly',
+    $q$ UPDATE "WardAlert" SET "Status" = 'PENDING' WHERE "AlertID" = 'ALT-1005' $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot write to the journal',
+    $q$ INSERT INTO "AlertEvent" ("AlertID", "EventType", "OccurredAt") VALUES ('ALT-1005', 'CREATED', now()) $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot raise alerts',
+    $q$ CALL sp_RaiseAlert(101, 1, 'MONITOR', 'HIGH', NULL, 'NURSE-01', NULL) $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot admit patients',
+    $q$ CALL sp_AdmitPatient(6, 104) $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_ok('alert service can raise alerts',
+    $q$ CALL sp_RaiseAlert(101, 1, 'MONITOR', 'HIGH', 'Role test', 'NURSE-01', NULL) $q$,
+    'medbase_alert_service');
+
+CALL pg_temp.expect_ok('make unassigned ALT-1008 1 minute old', $q$
+    UPDATE "WardAlert" SET "CreatedAt" = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+    WHERE "AlertID" = 'ALT-1008' $q$);
+
+CALL pg_temp.expect_ok('alert service can escalate overdue alerts',
+    $q$ CALL sp_EscalateAlert('ALT-1008', 'NURSE-04') $q$, 'medbase_alert_service');
+
+CALL pg_temp.expect_error('alert service cannot acknowledge alerts',
+    $q$ CALL sp_AcknowledgeAlert('ALT-1008', 'NURSE-04') $q$, 'permission denied%', 'medbase_alert_service');
+
+CALL pg_temp.expect_error('alert service cannot read PIN hashes',
+    $q$ SELECT "PinHash" FROM "Nurse" $q$, 'permission denied%', 'medbase_alert_service');
+
+CALL pg_temp.expect_error('alert service cannot change alerts directly',
+    $q$ DELETE FROM "WardAlert" WHERE "AlertID" = 'ALT-1008' $q$,
+    'permission denied%', 'medbase_alert_service');
+
 -- -----------------------------------------------------------------------------
 DO $$ BEGIN RAISE INFO 'ALL TESTS PASSED'; END $$;
 ROLLBACK;

@@ -148,7 +148,7 @@ FROM "WardAlert" WHERE "Status" = 'ACKNOWLEDGED' ORDER BY "CreatedAt";
 
 -- -----------------------------------------------------------------------------
 \echo
-\echo '--- STEP 9. Security: public staff only see ward capacity ---'
+\echo '--- STEP 9. Security: each role sees and does only its own part ---'
 SET ROLE medbase_public_staff;
 \echo 'a) Ward capacity view (allowed):'
 SELECT "WardName", "AvailableBeds" FROM "vw_WardCapacity" ORDER BY "WardID";
@@ -160,6 +160,14 @@ RESET ROLE;
 \echo 'Doctors / admissions staff (medbase_admissions) CAN admit:'
 SET ROLE medbase_admissions;
 CALL sp_AdmitPatient(5, 103);
+\echo '...but cannot acknowledge alerts (denied):'
+CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02');
+RESET ROLE;
+\echo 'Nurses (medbase_nurse) acknowledge alerts, but cannot read PIN hashes or edit alerts directly:'
+SET ROLE medbase_nurse;
+CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02');
+SELECT "PinHash" FROM "Nurse";
+UPDATE "WardAlert" SET "Status" = 'PENDING' WHERE "AlertID" = 'ALT-1005';
 RESET ROLE;
 \prompt 'Press Enter...' _
 
