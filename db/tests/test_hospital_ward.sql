@@ -576,6 +576,12 @@ CALL pg_temp.expect_error('alert service cannot acknowledge alerts',
 CALL pg_temp.expect_error('alert service cannot read PIN hashes',
     $q$ SELECT "PinHash" FROM "Nurse" $q$, 'permission denied%', 'medbase_alert_service');
 
+CALL pg_temp.expect_ok('alert service can read patient names (device simulator)',
+    $q$ SELECT "PatientID", "FullName" FROM "Patient" $q$, 'medbase_alert_service');
+
+CALL pg_temp.expect_error('alert service cannot read patient phone numbers',
+    $q$ SELECT "Phone" FROM "Patient" $q$, 'permission denied%', 'medbase_alert_service');
+
 CALL pg_temp.expect_error('alert service cannot change alerts directly',
     $q$ DELETE FROM "WardAlert" WHERE "AlertID" = 'ALT-1008' $q$,
     'permission denied%', 'medbase_alert_service');

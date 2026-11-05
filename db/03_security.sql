@@ -79,10 +79,12 @@ GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) TO medbase_nurse;
 
--- Alert service: reads what it needs to choose a nurse and find overdue alerts
+-- Alert service: reads what it needs to choose a nurse and find overdue alerts.
+-- The device simulator shows which patient lies in which ward (name only).
 GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment" TO medbase_alert_service;
 GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_alert_service;
 GRANT SELECT ("PatientID", "WardID", "Status") ON "Admission" TO medbase_alert_service;
+GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR, VARCHAR) TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) TO medbase_alert_service;
 
