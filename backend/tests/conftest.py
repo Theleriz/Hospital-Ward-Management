@@ -5,11 +5,19 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import login_throttle
-from app.main import app
+# Tests run escalation rounds themselves (app.escalation.escalate_overdue);
+# set before the app reads its settings
+os.environ["MEDBASE_ESCALATION_ENABLED"] = "false"
+
+from app.auth import login_throttle  # noqa: E402
+from app.main import app  # noqa: E402
 
 # Test accounts from db/04_seed.sql
 NURSE = {"badge_id": "BADGE-1001", "pin": "1111"}
+NURSE_2 = {"badge_id": "BADGE-1002", "pin": "2222"}
+NURSE_3 = {"badge_id": "BADGE-1003", "pin": "3333"}
+NURSE_4 = {"badge_id": "BADGE-1004", "pin": "4444"}
+NURSE_OFF_SHIFT = {"badge_id": "BADGE-1005", "pin": "5555"}
 HEAD_NURSE = {"badge_id": "BADGE-1010", "pin": "1010"}
 ADMISSIONS = {"badge_id": "BADGE-2001", "pin": "2001"}
 PUBLIC_STAFF = {"badge_id": "BADGE-3001", "pin": "3001"}
@@ -40,3 +48,9 @@ def seed_data():
 def login(client: TestClient, account: dict) -> None:
     response = client.post("/api/auth/login", json=account)
     assert response.status_code == 200, response.text
+
+
+def run_as_owner(sql: str, params=None) -> None:
+    """Change data directly, e.g. make an alert older than it is (tests only)."""
+    with psycopg.connect(ADMIN_URL, autocommit=True) as conn:
+        conn.execute(sql, params)

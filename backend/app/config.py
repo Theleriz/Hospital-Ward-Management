@@ -23,5 +23,13 @@ class Settings(BaseSettings):
     login_max_failures: int = 5
     login_lockout_seconds: int = 5 * 60
 
+    # Background escalation of overdue HIGH/CRITICAL alerts (UC-7)
+    escalation_enabled: bool = True
+    escalation_interval_seconds: float = 2.0
+
+    # Device simulator for demos: stands in for patient monitors and call buttons.
+    # Turn off for any real installation.
+    simulator_enabled: bool = True
+
 
 settings = Settings()

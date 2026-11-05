@@ -155,3 +155,83 @@ export function transferPatient(patientId: number, wardId: number): Promise<Acti
 export function dischargePatient(patientId: number): Promise<void> {
   return request(`/api/admissions/${patientId}/discharge`, { method: "POST" });
 }
+
+// --- Nurse workstation (UC-5 to UC-7) ------------------------------------------------
+
+export type Priority = "LOW" | "HIGH" | "CRITICAL";
+export type AlertSource = "MONITOR" | "CALL_BUTTON";
+export type NurseStatus = "Available" | "Busy" | "OffShift";
+
+export type Alert = {
+  alert_id: string;
+  ward_id: number;
+  ward_name: string;
+  patient_name: string | null;
+  source: AlertSource;
+  priority: Priority;
+  description: string | null;
+  status: "PENDING" | "ESCALATED" | "ACKNOWLEDGED";
+  assigned_nurse_id: string | null;
+  assigned_nurse_name: string | null;
+  escalated_to_id: string | null;
+  escalated_to_name: string | null;
+  acknowledged_by_id: string | null;
+  acknowledged_by_name: string | null;
+  created_at: string;
+  escalated_at: string | null;
+  acknowledged_at: string | null;
+  age_seconds: number;
+  mine: boolean;
+  can_acknowledge: boolean;
+};
+
+export type AlertBoard = { open: Alert[]; recent: Alert[] };
+
+export type NurseInfo = {
+  nurse_id: string;
+  full_name: string;
+  role: Role;
+  status: NurseStatus;
+  wards: { ward_id: number; ward_name: string; is_primary: boolean }[];
+};
+
+export function getAlerts(): Promise<AlertBoard> {
+  return request("/api/alerts");
+}
+
+export function acknowledgeAlert(alertId: string): Promise<Alert> {
+  return request(`/api/alerts/${alertId}/acknowledge`, { method: "POST" });
+}
+
+export function getMyNurse(): Promise<NurseInfo> {
+  return request("/api/nurses/me");
+}
+
+export function setMyStatus(status: NurseStatus): Promise<NurseInfo> {
+  return request("/api/nurses/me/status", { method: "PUT", body: JSON.stringify({ status }) });
+}
+
+// --- Device simulator (demo only) ------------------------------------------------------
+
+export type SimulatorWard = {
+  ward_id: number;
+  ward_name: string;
+  patients: { patient_id: number; full_name: string }[];
+  nurse_on_duty: string | null;
+};
+
+export type DeviceAlert = {
+  ward_id: number;
+  patient_id: number | null;
+  source: AlertSource;
+  priority: Priority;
+  description: string | null;
+};
+
+export function getSimulatorWards(): Promise<SimulatorWard[]> {
+  return request("/api/simulator/wards");
+}
+
+export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
+  return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
+}
