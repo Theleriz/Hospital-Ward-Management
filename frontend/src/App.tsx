@@ -12,23 +12,27 @@ import {
   type User,
 } from "./api";
 import LoginScreen from "./LoginScreen";
+import NursePost from "./NursePost";
+import SimulatorPage from "./SimulatorPage";
 import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "wards";
+type Page = "admissions" | "post" | "wards" | "simulator";
 
 const PAGE_LABELS: Record<Page, string> = {
   admissions: "Приёмное отделение",
+  post: "Пост медсестры",
   wards: "Палаты",
+  simulator: "Симулятор устройств",
 };
 
 // Screens each role can open; the first one opens after login
 const PAGES: Record<Role, Page[]> = {
   Admissions: ["admissions", "wards"],
   PublicStaff: ["wards"],
-  Nurse: ["wards"],
-  HeadNurse: ["wards"],
+  Nurse: ["post", "wards", "simulator"],
+  HeadNurse: ["post", "wards", "simulator"],
 };
 
 export default function App() {
@@ -103,7 +107,9 @@ function Workspace({ user }: { user: User }) {
         </nav>
       )}
       {page === "admissions" && <AdmissionsPage />}
+      {page === "post" && <NursePost headNurse={user.role === "HeadNurse"} />}
       {page === "wards" && <WardBoard />}
+      {page === "simulator" && <SimulatorPage />}
     </>
   );
 }
