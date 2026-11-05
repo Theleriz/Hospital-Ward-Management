@@ -118,3 +118,13 @@ def user_db(request: Request, user: User = Depends(current_user)) -> Iterator[Co
     """Database connection acting as the signed-in user's database role."""
     with role_connection(request.app.state.pool, DB_ROLES[user.role]) as conn:
         yield conn
+
+
+def role_db(*roles: Role) -> Callable[..., Iterator[Connection]]:
+    """Dependency: role check in the backend, then a connection as the user's database role."""
+
+    def dependency(request: Request, user: User = Depends(require_roles(*roles))) -> Iterator[Connection]:
+        with role_connection(request.app.state.pool, DB_ROLES[user.role]) as conn:
+            yield conn
+
+    return dependency

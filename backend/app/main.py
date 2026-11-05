@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.db import create_pool
-from app.routers import auth
+from app.routers import admissions, auth, wards
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,8 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(wards.router)
+app.include_router(admissions.router)
 
 
 @app.get("/api/health")
