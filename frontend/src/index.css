@@ -5,6 +5,7 @@
   --muted: #5b6575;
   --border: #dde1e7;
   --accent: #1d5fbf;
+  --accent-bg: #e8f0fb;
   --ok: #1f7a4d;
   --ok-bg: #e3f4ea;
   --down: #b42318;
@@ -19,8 +20,13 @@ body {
   margin: 0;
 }
 
+h2 {
+  font-size: 18px;
+  margin: 12px 0;
+}
+
 .page {
-  max-width: 720px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 32px 16px;
 }
@@ -51,12 +57,38 @@ body {
   color: var(--muted);
 }
 
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 20px 16px;
 }
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.block {
+  display: block;
+}
+
+/* --- Login ---------------------------------------------------------------- */
 
 .login {
   max-width: 360px;
@@ -69,11 +101,7 @@ body {
   margin-bottom: 0;
 }
 
-.hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
+/* --- Form controls -------------------------------------------------------- */
 
 label {
   display: flex;
@@ -83,15 +111,18 @@ label {
   color: var(--muted);
 }
 
-input {
+input,
+select {
   font: inherit;
   color: var(--text);
+  background: var(--surface);
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
 
-input:focus {
+input:focus,
+select:focus {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
@@ -116,26 +147,60 @@ button.secondary {
   color: var(--accent);
 }
 
+button.danger {
+  border-color: var(--down);
+  background: var(--down);
+}
+
 .error {
   margin: 0;
   color: var(--down);
 }
 
-.status-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 16px;
+}
+
+.form-title,
+.form-wide {
+  grid-column: 1 / -1;
+}
+
+.form-title {
+  margin-bottom: 0;
+}
+
+.search {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+/* --- Notices and badges --------------------------------------------------- */
+
+.notice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+
+.notice-ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+}
+
+.notice-error {
+  color: var(--down);
+  background: var(--down-bg);
 }
 
 .badge {
   border-radius: 999px;
   padding: 2px 12px;
   font-size: 14px;
-}
-
-.badge-loading {
-  color: var(--muted);
-  background: var(--bg);
+  white-space: nowrap;
 }
 
 .badge-ok {
@@ -146,4 +211,145 @@ button.secondary {
 .badge-down {
   color: var(--down);
   background: var(--down-bg);
+}
+
+/* --- Tabs ----------------------------------------------------------------- */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--muted);
+  padding: 8px 14px;
+}
+
+.tab-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* --- Ward board ----------------------------------------------------------- */
+
+.ward-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ward {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.ward header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ward-full {
+  border-color: var(--down);
+}
+
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.ward-full .meter-fill {
+  background: var(--down);
+}
+
+.ward-numbers {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0;
+  font-size: 14px;
+}
+
+/* --- Patients table ------------------------------------------------------- */
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+}
+
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  vertical-align: middle;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  padding: 6px 12px;
+}
+
+/* --- Footer --------------------------------------------------------------- */
+
+.footer {
+  margin-top: 32px;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 10px;
+}
+
+.dot:first-child {
+  margin-left: 0;
+}
+
+.dot-ok {
+  background: var(--ok);
+}
+
+.dot-down {
+  background: var(--down);
 }

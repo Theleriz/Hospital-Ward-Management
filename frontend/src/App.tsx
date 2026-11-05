@@ -1,9 +1,35 @@
 import { useEffect, useState } from "react";
 
-import { getCurrentUser, getHealth, logout, ROLE_LABELS, type Health, type User } from "./api";
+import AdmissionsPage from "./AdmissionsPage";
+import {
+  getCurrentUser,
+  getHealth,
+  logout,
+  ROLE_LABELS,
+  UNAUTHORIZED_EVENT,
+  type Health,
+  type Role,
+  type User,
+} from "./api";
 import LoginScreen from "./LoginScreen";
+import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
+
+type Page = "admissions" | "wards";
+
+const PAGE_LABELS: Record<Page, string> = {
+  admissions: "Приёмное отделение",
+  wards: "Палаты",
+};
+
+// Screens each role can open; the first one opens after login
+const PAGES: Record<Role, Page[]> = {
+  Admissions: ["admissions", "wards"],
+  PublicStaff: ["wards"],
+  Nurse: ["wards"],
+  HeadNurse: ["wards"],
+};
 
 export default function App() {
   const [session, setSession] = useState<Session>({ kind: "checking" });
@@ -12,6 +38,10 @@ export default function App() {
     getCurrentUser()
       .then((user) => setSession(user ? { kind: "signed-in", user } : { kind: "anonymous" }))
       .catch(() => setSession({ kind: "anonymous" }));
+
+    const onUnauthorized = () => setSession({ kind: "anonymous" });
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   }, []);
 
   async function onLogout() {
@@ -43,9 +73,38 @@ export default function App() {
         {session.kind === "anonymous" && (
           <LoginScreen onLogin={(user) => setSession({ kind: "signed-in", user })} />
         )}
-        {session.kind === "signed-in" && <SystemStatus />}
+        {session.kind === "signed-in" && <Workspace key={session.user.account_id} user={session.user} />}
       </main>
+
+      <SystemStatus />
     </div>
+  );
+}
+
+function Workspace({ user }: { user: User }) {
+  const pages = PAGES[user.role];
+  const [page, setPage] = useState<Page>(pages[0]);
+
+  return (
+    <>
+      {pages.length > 1 && (
+        <nav className="tabs" aria-label="Разделы">
+          {pages.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={p === page ? "tab tab-active" : "tab"}
+              aria-current={p === page ? "page" : undefined}
+              onClick={() => setPage(p)}
+            >
+              {PAGE_LABELS[p]}
+            </button>
+          ))}
+        </nav>
+      )}
+      {page === "admissions" && <AdmissionsPage />}
+      {page === "wards" && <WardBoard />}
+    </>
   );
 }
 
@@ -60,26 +119,14 @@ function SystemStatus() {
       .catch(() => setState({ kind: "failed" }));
   }, []);
 
-  return (
-    <section className="card" aria-live="polite">
-      <h2>Состояние системы</h2>
-      <StatusRow label="Backend" ok={state.kind === "loaded"} loading={state.kind === "loading"} />
-      <StatusRow
-        label="База данных"
-        ok={state.kind === "loaded" && state.health.database === "ok"}
-        loading={state.kind === "loading"}
-      />
-    </section>
-  );
-}
+  const backend = state.kind === "loaded";
+  const database = state.kind === "loaded" && state.health.database === "ok";
+  const word = (ok: boolean) => (state.kind === "loading" ? "проверка…" : ok ? "работает" : "недоступна");
 
-function StatusRow({ label, ok, loading }: { label: string; ok: boolean; loading: boolean }) {
-  const text = loading ? "проверка…" : ok ? "работает" : "недоступна";
-  const modifier = loading ? "loading" : ok ? "ok" : "down";
   return (
-    <p className="status-row">
-      <span>{label}</span>
-      <span className={`badge badge-${modifier}`}>{text}</span>
-    </p>
+    <footer className="footer" aria-live="polite">
+      <span className={`dot ${backend ? "dot-ok" : "dot-down"}`} /> Backend: {word(backend)}
+      <span className={`dot ${database ? "dot-ok" : "dot-down"}`} /> База данных: {word(database)}
+    </footer>
   );
 }
