@@ -14,7 +14,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.db import create_pool
-from app.routers import admissions, auth, wards
+from app.escalation import EscalationWorker
+from app.routers import admissions, alerts, auth, simulator, wards
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,13 @@ async def lifespan(app: FastAPI):
     # Don't block startup on the database: /api/health reports when it is unavailable
     app.state.pool = create_pool()
     app.state.pool.open(wait=False)
+    worker = None
+    if settings.escalation_enabled:
+        worker = EscalationWorker(app.state.pool, settings.escalation_interval_seconds)
+        worker.start()
     yield
+    if worker:
+        worker.stop()
     app.state.pool.close()
 
 
@@ -49,6 +56,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(wards.router)
 app.include_router(admissions.router)
+app.include_router(alerts.router)
+app.include_router(simulator.router)
 
 
 @app.get("/api/health")
