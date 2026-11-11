@@ -129,3 +129,22 @@ export const ArrowUpIcon = (p: IconProps) => (
     <path d="M12 19V5M6 11l6-6 6 6" />
   </Icon>
 );
+
+export const ReportIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 4v16h16" />
+    <path d="M8 16v-4M12 16V8M16 16v-6" />
+  </Icon>
+);
+
+export const RefreshIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" />
+  </Icon>
+);
+
+export const ChevronIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m9 6 6 6-6 6" />
+  </Icon>
+);
