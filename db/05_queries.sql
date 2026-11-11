@@ -63,22 +63,20 @@ FROM "Nurse"
 WHERE "Status" = 'Available'
 ORDER BY "NurseID";
 
--- Q7: response time report for the head nurse (UC-8)
-SELECT a."AlertID", a."Priority", a."AssignedNurseID", a."AcknowledgedByNurseID",
-       a."AcknowledgedAt" - a."CreatedAt" AS "ResponseTime",
-       a."EscalatedToNurseID" IS NOT NULL AS "WasEscalated"
-FROM "WardAlert" a
-WHERE a."Status" = 'ACKNOWLEDGED'
-ORDER BY a."CreatedAt";
+-- Q7: response time report for the head nurse (UC-8, view vw_AlertResponse)
+SELECT "AlertID", "Priority", "AssignedNurseID", "AcknowledgedByNurseID", "ResponseTime", "WasEscalated"
+FROM "vw_AlertResponse"
+WHERE "Status" = 'ACKNOWLEDGED'
+ORDER BY "CreatedAt";
 
-SELECT a."Priority",
+SELECT "Priority",
        COUNT(*) AS "Alerts",
-       COUNT(a."AcknowledgedAt") AS "Acknowledged",
-       COUNT(a."EscalatedToNurseID") AS "Escalated",
-       AVG(a."AcknowledgedAt" - a."CreatedAt") AS "AvgResponseTime"
-FROM "WardAlert" a
-GROUP BY a."Priority"
-ORDER BY CASE a."Priority" WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 ELSE 3 END;
+       COUNT("AcknowledgedAt") AS "Acknowledged",
+       COUNT(*) FILTER (WHERE "WasEscalated") AS "Escalated",
+       AVG("ResponseTime") AS "AvgResponseTime"
+FROM "vw_AlertResponse"
+GROUP BY "Priority"
+ORDER BY CASE "Priority" WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 ELSE 3 END;
 
 -- Q8: full journal of one alert (who got it, who it was escalated to, who acknowledged)
 SELECT e."OccurredAt", e."EventType", e."NurseID", n."FullName"
