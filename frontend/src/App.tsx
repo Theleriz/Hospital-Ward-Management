@@ -11,16 +11,27 @@ import {
   type Role,
   type User,
 } from "./api";
-import { AdmissionsIcon, LogoMark, LogoutIcon, MoonIcon, PostIcon, SimulatorIcon, SunIcon, WardsIcon } from "./icons";
+import {
+  AdmissionsIcon,
+  LogoMark,
+  LogoutIcon,
+  MoonIcon,
+  PostIcon,
+  ReportIcon,
+  SimulatorIcon,
+  SunIcon,
+  WardsIcon,
+} from "./icons";
 import LoginScreen from "./LoginScreen";
 import NursePost from "./NursePost";
+import ReportPage from "./ReportPage";
 import SimulatorPage from "./SimulatorPage";
 import { useTheme } from "./theme";
 import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "post" | "wards" | "simulator";
+type Page = "admissions" | "post" | "report" | "wards" | "simulator";
 
 type PageInfo = {
   label: string;
@@ -42,6 +53,11 @@ const PAGE_INFO: Record<Page, PageInfo> = {
         ? "Все оповещения отделения в реальном времени"
         : "Оповещения ваших палат в реальном времени",
   },
+  report: {
+    label: "Отчёт старшей медсестры",
+    icon: ReportIcon,
+    description: () => "Время реакции, эскалации и история оповещений отделения",
+  },
   wards: {
     label: "Палаты",
     icon: WardsIcon,
@@ -59,7 +75,7 @@ const PAGES: Record<Role, Page[]> = {
   Admissions: ["admissions", "wards"],
   PublicStaff: ["wards"],
   Nurse: ["post", "wards", "simulator"],
-  HeadNurse: ["post", "wards", "simulator"],
+  HeadNurse: ["report", "post", "wards", "simulator"],
 };
 
 export default function App() {
@@ -170,6 +186,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
 
         {page === "admissions" && <AdmissionsPage />}
         {page === "post" && <NursePost headNurse={user.role === "HeadNurse"} />}
+        {page === "report" && <ReportPage />}
         {page === "wards" && <WardBoard />}
         {page === "simulator" && <SimulatorPage />}
       </main>
