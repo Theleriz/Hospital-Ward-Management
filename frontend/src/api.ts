@@ -235,3 +235,85 @@ export function getSimulatorWards(): Promise<SimulatorWard[]> {
 export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
 }
+
+// --- Head nurse report (UC-8) ------------------------------------------------------------
+
+export type AlertStatus = "PENDING" | "ESCALATED" | "ACKNOWLEDGED";
+
+export type ReportSummary = {
+  total: number;
+  acknowledged: number;
+  open: number;
+  escalated: number;
+  avg_response_seconds: number | null;
+  median_response_seconds: number | null;
+  max_response_seconds: number | null;
+  within_target: number;
+};
+
+export type ReportPriorityRow = {
+  priority: Priority;
+  total: number;
+  acknowledged: number;
+  escalated: number;
+  avg_response_seconds: number | null;
+};
+
+export type ReportNurseRow = {
+  nurse_id: string;
+  full_name: string;
+  assigned: number;
+  acknowledged: number;
+  avg_response_seconds: number | null;
+  escalated_away: number;
+  received_escalations: number;
+};
+
+export type HistoryAlert = {
+  alert_id: string;
+  ward_id: number;
+  ward_name: string;
+  source: AlertSource;
+  priority: Priority;
+  description: string | null;
+  status: AlertStatus;
+  assigned_nurse_id: string | null;
+  assigned_nurse_name: string | null;
+  escalated_to_id: string | null;
+  escalated_to_name: string | null;
+  acknowledged_by_id: string | null;
+  acknowledged_by_name: string | null;
+  created_at: string;
+  escalated_at: string | null;
+  acknowledged_at: string | null;
+  response_seconds: number | null;
+  was_escalated: boolean;
+};
+
+export type AlertReport = {
+  hours: number;
+  since: string;
+  generated_at: string;
+  target_seconds: number;
+  summary: ReportSummary;
+  by_priority: ReportPriorityRow[];
+  by_nurse: ReportNurseRow[];
+  alerts: HistoryAlert[];
+  alerts_truncated: boolean;
+};
+
+export type AlertJournalEvent = {
+  event_id: number;
+  event_type: "CREATED" | "ASSIGNED" | "ESCALATED" | "ACKNOWLEDGED";
+  nurse_id: string | null;
+  nurse_name: string | null;
+  occurred_at: string;
+};
+
+export function getAlertReport(hours: number): Promise<AlertReport> {
+  return request(`/api/reports/alerts?hours=${hours}`);
+}
+
+export function getAlertJournal(alertId: string): Promise<AlertJournalEvent[]> {
+  return request(`/api/reports/alerts/${encodeURIComponent(alertId)}/events`);
+}
