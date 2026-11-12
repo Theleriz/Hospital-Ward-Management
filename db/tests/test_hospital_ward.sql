@@ -409,13 +409,42 @@ CALL pg_temp.expect_true('ALT-1001 is ESCALATED to NURSE-03, still assigned to N
        AND EXISTS (SELECT 1 FROM "AlertEvent"
                    WHERE "AlertID" = 'ALT-1001' AND "EventType" = 'ESCALATED' AND "NurseID" = 'NURSE-03') $q$);
 
-CALL pg_temp.expect_error('escalate: already escalated alert is rejected', $q$
+CALL pg_temp.expect_error('escalate again within 30 s of the last escalation is rejected', $q$
     CALL sp_EscalateAlert('ALT-1001', 'NURSE-04') $q$,
-    'Alert ID ALT-1001 is not pending (status ESCALATED)%');
+    'Alert ID ALT-1001 was escalated % s ago (next escalation after 30 s)%');
 
 CALL pg_temp.expect_error('escalate: acknowledged alert is rejected', $q$
     CALL sp_EscalateAlert('ALT-1002', 'NURSE-04') $q$,
-    'Alert ID ALT-1002 is not pending (status ACKNOWLEDGED)%');
+    'Alert ID ALT-1002 is already acknowledged%');
+
+-- Repeat escalation (decisions.md, record 9): ALT-1003 was escalated to NURSE-03
+-- 30 minutes ago and is still not acknowledged
+CALL pg_temp.expect_error('repeat escalation: not to the nurse it is already escalated to', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-03') $q$,
+    'Alert ALT-1003 is already escalated to nurse NURSE-03%');
+
+CALL pg_temp.expect_error('repeat escalation: never back to the assigned nurse', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-01') $q$,
+    'Nurse NURSE-01 is already assigned to alert ALT-1003%');
+
+CALL pg_temp.expect_error('repeat escalation: Busy nurse is rejected', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-02') $q$,
+    'Nurse NURSE-02 is not Available (status Busy)%');
+
+CALL pg_temp.expect_ok('repeat escalation of ALT-1003 to Available NURSE-04', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-04') $q$);
+
+CALL pg_temp.expect_true('ALT-1003 is ESCALATED to NURSE-04, assignment kept, journal has both escalations', $q$
+    SELECT (SELECT "Status" = 'ESCALATED' AND "EscalatedToNurseID" = 'NURSE-04'
+                   AND "EscalatedAt" > CURRENT_TIMESTAMP - INTERVAL '5 seconds'
+                   AND "AssignedNurseID" = 'NURSE-01'
+            FROM "WardAlert" WHERE "AlertID" = 'ALT-1003')
+       AND (SELECT array_agg("NurseID"::TEXT ORDER BY "EventID") FROM "AlertEvent"
+            WHERE "AlertID" = 'ALT-1003' AND "EventType" = 'ESCALATED') = ARRAY['NURSE-03', 'NURSE-04'] $q$);
+
+CALL pg_temp.expect_error('repeat escalation: again within 30 s is rejected', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-03') $q$,
+    'Alert ID ALT-1003 was escalated % s ago (next escalation after 30 s)%');
 
 -- -----------------------------------------------------------------------------
 -- 7. sp_AcknowledgeAlert
