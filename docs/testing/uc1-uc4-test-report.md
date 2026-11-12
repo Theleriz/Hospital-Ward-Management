@@ -4,7 +4,7 @@
 **Team:** MedBase  
 **Author:** Bauyrzhanuly Kuanyshbek  
 **Date:** 11 November 2026  
-**Related PR:** #4  
+**Related PR:** #14  
 **Status:** PASSED
 
 ## 1. Objective
