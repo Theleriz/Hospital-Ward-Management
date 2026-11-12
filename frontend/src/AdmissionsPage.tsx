@@ -11,6 +11,7 @@ import {
   type Gender,
   type Ward,
 } from "./api";
+import { SearchIcon } from "./icons";
 import WardBoard from "./WardBoard";
 
 type Notice = { kind: "ok" | "error"; text: string } | null;
@@ -61,7 +62,7 @@ export default function AdmissionsPage() {
       )}
       <NewAdmissionForm wards={wards} onDone={changed} onError={failed} />
       <PatientsTable admissions={admissions} wards={wards} onDone={changed} onError={failed} />
-      <WardBoard refreshKey={version} />
+      <WardBoard refreshKey={version} compact />
     </div>
   );
 }
@@ -184,17 +185,21 @@ function PatientsTable({ admissions, ...actions }: ActionProps & { admissions: A
     <section className="card">
       <div className="section-head">
         <h2>Сейчас в отделении</h2>
-        <span className="hint">{admissions.length} пациентов</span>
+        <span className="badge badge-muted">{admissions.length} пациентов</span>
       </div>
-      <input
-        className="search"
-        type="search"
-        placeholder="Поиск по ФИО или телефону"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-      />
+      <div className="search-box">
+        <SearchIcon size={18} />
+        <input
+          className="search"
+          type="search"
+          placeholder="Поиск по ФИО или телефону"
+          aria-label="Поиск пациента"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
       {shown.length === 0 ? (
-        <p className="hint">{admissions.length ? "Никого не найдено" : "В отделении нет пациентов"}</p>
+        <p className="empty">{admissions.length ? "Никого не найдено" : "В отделении нет пациентов"}</p>
       ) : (
         <div className="table-wrap">
           <table className="table">
@@ -256,9 +261,9 @@ function PatientRow({ admission, wards, onDone, onError }: ActionProps & { admis
         <strong>{admission.full_name}</strong>
         <span className="hint block">р. {formatDate(admission.dob)}</span>
       </td>
-      <td>{admission.phone ?? "—"}</td>
+      <td className="num">{admission.phone ?? "—"}</td>
       <td>{admission.ward_name}</td>
-      <td>{formatDate(admission.admit_date)}</td>
+      <td className="num">{formatDate(admission.admit_date)}</td>
       <td className="actions">
         {mode === "view" && (
           <>
