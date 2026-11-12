@@ -1,0 +1,39 @@
+# Isolated disposable database: no host ports, fixed container names or app volume.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: medbase
+      POSTGRES_PASSWORD: medbase
+      POSTGRES_DB: hospital_ward
+    volumes:
+      - ./db:/db:ro
+      - ./db/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U medbase -d hospital_ward"]
+      interval: 2s
+      retries: 30
+  tests:
+    image: ${MEDBASE_PERMISSIONS_TEST_IMAGE:-python:3.12-slim}
+    user: "0:0"
+    working_dir: /workspace/backend
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      MEDBASE_DATABASE_URL: postgresql://medbase_api:medbase_api@db:5432/hospital_ward
+      MEDBASE_TEST_ADMIN_URL: postgresql://medbase:medbase@db:5432/hospital_ward
+      MEDBASE_ESCALATION_ENABLED: "false"
+      MEDBASE_SIMULATOR_ENABLED: "true"
+    volumes:
+      - ./backend:/workspace/backend:ro
+      - ./db:/workspace/db:ro
+      - ./artifacts/api-permissions:/results
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >-
+        pip install --quiet --disable-pip-version-check --root-user-action=ignore -r requirements-dev.txt &&
+        python -m pytest tests/test_api_permissions.py -v -p no:cacheprovider
+        -o junit_family=xunit1 --junitxml=/results/junit.xml
