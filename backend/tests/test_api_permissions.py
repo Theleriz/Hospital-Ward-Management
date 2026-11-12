@@ -54,6 +54,9 @@ CASES = [
     Case("acknowledge-ward-101", "POST", "/api/alerts/ALT-1001/acknowledge", None, (403, 403, 200, 403)),
     Case("nurse-profile", "GET", "/api/nurses/me", None, (403, 403, 200, 200)),
     Case("nurse-status", "PUT", "/api/nurses/me/status", {"status": "Busy"}, (403, 403, 200, 200)),
+    # Head nurse report (T-27, FR-31): only the head nurse
+    Case("head-nurse-report", "GET", "/api/reports/alerts", None, (403, 403, 403, 200)),
+    Case("alert-journal", "GET", "/api/reports/alerts/ALT-1006/events", None, (403, 403, 403, 200)),
     Case("simulator-wards", "GET", "/api/simulator/wards", None, (403, 403, 200, 200)),
     Case("simulator-alert", "POST", "/api/simulator/alerts", {
         "ward_id": 101, "patient_id": 1, "source": "MONITOR", "priority": "HIGH",
@@ -157,6 +160,10 @@ def test_disabled_simulator_is_not_available_even_to_head_nurse(client, monkeypa
     ("medbase_nurse", 'CALL sp_AdmitPatient(7, 104)'),
     ("medbase_nurse", 'UPDATE "WardAlert" SET "Description" = \'changed\' WHERE "AlertID" = \'ALT-1001\''),
     ("medbase_nurse", 'DELETE FROM "AlertEvent"'),
+    # The report and the journal belong to medbase_head_nurse only (decisions.md, record 8)
+    ("medbase_nurse", 'SELECT * FROM "vw_AlertResponse"'),
+    ("medbase_nurse", 'SELECT * FROM "AlertEvent"'),
+    ("medbase_admissions", 'SELECT * FROM "vw_AlertResponse"'),
     ("medbase_admissions", 'CALL sp_AcknowledgeAlert(\'ALT-1001\', \'NURSE-01\')'),
 ])
 def test_database_denies_operation_even_without_api_guard(client, db_role, query):
