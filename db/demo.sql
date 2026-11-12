@@ -139,11 +139,15 @@ SELECT "OccurredAt", "EventType", "NurseID"
 FROM "AlertEvent" WHERE "AlertID" = 'ALT-1001' ORDER BY "EventID";
 \echo '   Deleting the journal -> rejected:'
 DELETE FROM "AlertEvent" WHERE "AlertID" = 'ALT-1001';
-\echo 'f) Head nurse report: response time of acknowledged alerts:'
-SELECT "AlertID", "Priority", "AssignedNurseID", "AcknowledgedByNurseID",
-       "AcknowledgedAt" - "CreatedAt" AS "ResponseTime",
-       "EscalatedToNurseID" IS NOT NULL AS "WasEscalated"
-FROM "WardAlert" WHERE "Status" = 'ACKNOWLEDGED' ORDER BY "CreatedAt";
+\echo 'f) Head nurse report (vw_AlertResponse): response time of acknowledged alerts:'
+SET ROLE medbase_head_nurse;
+SELECT "AlertID", "Priority", "AssignedNurseID", "AcknowledgedByNurseID", "ResponseTime", "WasEscalated"
+FROM "vw_AlertResponse" WHERE "Status" = 'ACKNOWLEDGED' ORDER BY "CreatedAt";
+RESET ROLE;
+\echo '   A ward nurse cannot open the report or the journal (denied):'
+SET ROLE medbase_nurse;
+SELECT * FROM "vw_AlertResponse";
+RESET ROLE;
 \prompt 'Press Enter...' _
 
 -- -----------------------------------------------------------------------------

@@ -9,6 +9,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Cleanup existing objects if re-running
 DROP VIEW IF EXISTS "vw_WardCapacity";
+DROP VIEW IF EXISTS "vw_AlertResponse";
 DROP PROCEDURE IF EXISTS sp_RegisterAndAdmitPatient(VARCHAR, DATE, VARCHAR, VARCHAR, INT);
 DROP PROCEDURE IF EXISTS sp_AdmitPatient(INT, INT);
 DROP PROCEDURE IF EXISTS sp_DischargePatient(INT);
