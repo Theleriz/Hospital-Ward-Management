@@ -208,8 +208,9 @@ BEGIN
                 CASE WHEN TG_OP = 'INSERT' THEN NEW."CreatedAt" ELSE NEW."UpdatedAt" END);
     END IF;
 
+    -- Every escalation is logged, a repeat escalation to the next nurse too
     IF NEW."EscalatedToNurseID" IS NOT NULL
-       AND (TG_OP = 'INSERT' OR OLD."EscalatedToNurseID" IS NULL) THEN
+       AND (TG_OP = 'INSERT' OR NEW."EscalatedToNurseID" IS DISTINCT FROM OLD."EscalatedToNurseID") THEN
         INSERT INTO "AlertEvent" ("AlertID", "EventType", "NurseID", "OccurredAt")
         VALUES (NEW."AlertID", 'ESCALATED', NEW."EscalatedToNurseID", NEW."EscalatedAt");
     END IF;
