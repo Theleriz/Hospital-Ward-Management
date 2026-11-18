@@ -73,6 +73,7 @@ BIS/
 - **[docs/decisions.md](docs/decisions.md)** — журнал критических решений по проекту: смена технологии, способ работы с чем-то важным и т. п. Мелкие решения, которые не влияют на проект, туда не пишутся. Шаблон записи — в начале файла.
 - **[docs/architecture.md](docs/architecture.md)** — компоненты и потоки данных, контракт API, роли, два слоя защиты, модель угроз и известные ограничения (T-30).
 - **[docs/testing/login-lockout-report.md](docs/testing/login-lockout-report.md)** — T-48: блокировка PIN в PostgreSQL, добавочная миграция и демонстрация реального рестарта: `bash scripts/check-login-lockout.sh`.
+- **[docs/testing/alert-timing-report.md](docs/testing/alert-timing-report.md)** — T-29: настоящий Chromium, 12 замеров доставки и первая/повторная эскалация: `bash scripts/check-alert-timing.sh`.
 - **[docs/sequence-diagrams.md](docs/sequence-diagrams.md)** — sequence-диаграммы входа, госпитализации, перевода, выписки, оповещений, эскалации и отчёта старшей медсестры (UC-1 — UC-8).
 - **[docs/testing/api-permissions-report.md](docs/testing/api-permissions-report.md)** — матрица прав реальных API и воспроизводимый отчёт Shynbulat Kazbek; запуск в отдельной тестовой БД: `bash scripts/check-api-permissions.sh`.
 
