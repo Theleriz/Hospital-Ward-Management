@@ -35,7 +35,7 @@
 -- =============================================================================
 
 -- Clear existing data and reset sequence counters
-TRUNCATE TABLE "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "StaffAccount",
+TRUNCATE TABLE "LoginThrottle", "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "StaffAccount",
     "Admission", "Ward", "Patient"
     RESTART IDENTITY CASCADE;
 

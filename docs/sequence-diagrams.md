@@ -28,18 +28,26 @@ sequenceDiagram
     participant DB as PostgreSQL
     Staff->>UI: Вводит бейдж и PIN
     UI->>API: POST /api/auth/login
-    API->>API: Формат ввода и блокировка попыток
+    API->>API: Проверить формат ввода
+    API->>DB: BEGIN, fn_LoginStaff(badge, pin)
+    DB->>DB: INSERT при необходимости, SELECT FOR UPDATE по бейджу
+    DB->>DB: Проверить срок блокировки по часам PostgreSQL
     alt Бейдж заблокирован
+        DB-->>API: LOCKED и RetryAfter
+        API->>DB: COMMIT
         API-->>UI: 429 и Retry-After
     else Проверка входа разрешена
-        API->>DB: fn_AuthenticateStaff(badge, pin)
+        DB->>DB: Приватный fn_AuthenticateStaff(badge, pin)
         DB->>DB: crypt(PIN, PinHash), сравнение bcrypt
         alt Неверный PIN или неизвестный бейдж
-            DB-->>API: Нет строк
-            API->>API: Записать неудачную попытку
+            DB->>DB: Сохранить ошибку, на пятой поставить LockedUntil
+            DB-->>API: INVALID
+            API->>DB: COMMIT до возврата HTTP-ошибки
             API-->>UI: 401, одинаковое сообщение
         else Вход успешен
-            DB-->>API: account_id, имя, роль
+            DB->>DB: Сбросить счётчик ошибок
+            DB-->>API: OK, account_id, имя, роль
+            API->>DB: COMMIT
             API-->>UI: 200 и подписанная HttpOnly-cookie
         end
     end
