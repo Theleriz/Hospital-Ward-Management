@@ -29,7 +29,8 @@ DB_ROLES: dict[Role, str] = {
     Role.ADMISSIONS: "medbase_admissions",
     Role.PUBLIC_STAFF: "medbase_public_staff",
     Role.NURSE: "medbase_nurse",
-    Role.HEAD_NURSE: "medbase_nurse",
+    # A nurse plus the report and the alert journal (UC-8)
+    Role.HEAD_NURSE: "medbase_head_nurse",
 }
 
 

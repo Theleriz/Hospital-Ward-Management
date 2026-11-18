@@ -4,6 +4,17 @@ import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priorit
 
 type Notice = { kind: "ok" | "error"; text: string } | null;
 
+const SOURCES: { value: AlertSource; label: string; hint: string }[] = [
+  { value: "MONITOR", label: "Монитор пациента", hint: "показатели вышли за границы" },
+  { value: "CALL_BUTTON", label: "Кнопка вызова", hint: "пациент зовёт медсестру" },
+];
+
+const PRIORITIES: { value: Priority; hint: string }[] = [
+  { value: "CRITICAL", hint: "угроза жизни" },
+  { value: "HIGH", hint: "нужна помощь скоро" },
+  { value: "LOW", hint: "без эскалации" },
+];
+
 /** Demo stand-in for patient monitors and call buttons (T-26). */
 export default function SimulatorPage() {
   const [wards, setWards] = useState<SimulatorWard[]>([]);
@@ -60,71 +71,115 @@ export default function SimulatorPage() {
 
   return (
     <div className="stack">
-      <p className="hint">
-        Только для демонстрации: заменяет монитор пациента и кнопку вызова. Оповещение появляется на посту медсестры
-        палаты за секунду; HIGH и CRITICAL без подтверждения через 30 секунд уходят свободной медсестре.
-      </p>
       {notice && (
         <p className={`notice notice-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
           {notice.text}
         </p>
       )}
-      <form className="card form-grid" onSubmit={onSubmit}>
-        <h2 className="form-title">Новое оповещение</h2>
-        <label>
-          Палата
-          <select value={wardId} onChange={(e) => chooseWard(e.target.value)} required>
-            {wards.map((w) => (
-              <option key={w.ward_id} value={w.ward_id}>
-                {w.ward_name}
-              </option>
-            ))}
-          </select>
-          <span className="hint">
-            Получит: {ward ? (ward.nurse_on_duty ?? "никто — нет медсестры на смене") : "…"}
-          </span>
-        </label>
-        <label>
-          Пациент
-          <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-            {ward?.patients.map((p) => (
-              <option key={p.patient_id} value={p.patient_id}>
-                {p.full_name}
-              </option>
-            ))}
-            <option value="">без пациента (кнопка в коридоре)</option>
-          </select>
-        </label>
-        <label>
-          Источник
-          <select value={source} onChange={(e) => setSource(e.target.value as AlertSource)}>
-            <option value="MONITOR">монитор пациента</option>
-            <option value="CALL_BUTTON">кнопка вызова</option>
-          </select>
-        </label>
-        <label>
-          Приоритет
-          <select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
-            <option value="CRITICAL">CRITICAL — критическое</option>
-            <option value="HIGH">HIGH — высокое</option>
-            <option value="LOW">LOW — низкое (без эскалации)</option>
-          </select>
-        </label>
-        <label className="form-wide">
-          Описание (необязательно)
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={200}
-            placeholder="по умолчанию — типовое для источника и приоритета"
-          />
-        </label>
-        <div className="form-wide">
-          <button type="submit" disabled={busy || !wardId}>
-            {busy ? "Отправка…" : "Создать оповещение"}
-          </button>
-        </div>
-      </form>
+      <div className="sim-layout">
+        <form className="card form-grid" onSubmit={onSubmit}>
+          <h2 className="form-title">Новое оповещение</h2>
+          <label>
+            Палата
+            <select value={wardId} onChange={(e) => chooseWard(e.target.value)} required>
+              {wards.map((w) => (
+                <option key={w.ward_id} value={w.ward_id}>
+                  {w.ward_name}
+                </option>
+              ))}
+            </select>
+            <span className="hint">
+              Получит: {ward ? (ward.nurse_on_duty ?? "никто — нет медсестры на смене") : "…"}
+            </span>
+          </label>
+          <label>
+            Пациент
+            <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
+              {ward?.patients.map((p) => (
+                <option key={p.patient_id} value={p.patient_id}>
+                  {p.full_name}
+                </option>
+              ))}
+              <option value="">без пациента (кнопка в коридоре)</option>
+            </select>
+          </label>
+
+          <fieldset className="form-wide choice-field">
+            <legend>Источник</legend>
+            <div className="choice-group choice-group-2" role="radiogroup" aria-label="Источник">
+              {SOURCES.map((s) => (
+                <button
+                  key={s.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={source === s.value}
+                  className={source === s.value ? "choice choice-active" : "choice"}
+                  onClick={() => setSource(s.value)}
+                >
+                  {s.label}
+                  <span>{s.hint}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="form-wide choice-field">
+            <legend>Приоритет</legend>
+            <div className="choice-group" role="radiogroup" aria-label="Приоритет">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={priority === p.value}
+                  className={priority === p.value ? "choice choice-active" : "choice"}
+                  onClick={() => setPriority(p.value)}
+                >
+                  <b className={`priority priority-${p.value}`}>{p.value}</b>
+                  <span>{p.hint}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <label className="form-wide">
+            Описание (необязательно)
+            <input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={200}
+              placeholder="по умолчанию — типовое для источника и приоритета"
+            />
+          </label>
+          <div className="form-wide">
+            <button type="submit" disabled={busy || !wardId}>
+              {busy ? "Отправка…" : "Создать оповещение"}
+            </button>
+          </div>
+        </form>
+
+        <aside className="card">
+          <h2>Как это работает</h2>
+          <p className="hint">
+            Только для демонстрации: экран заменяет монитор пациента и кнопку вызова. Оповещение появляется на посту
+            медсестры палаты за секунду.
+          </p>
+          <ul className="legend">
+            <li>
+              <span className="priority priority-CRITICAL">Critical</span>
+              <span>звук на посту; без подтверждения через 30 с уходит свободной медсестре</span>
+            </li>
+            <li>
+              <span className="priority priority-HIGH">High</span>
+              <span>звук на посту; эскалация через 30 с, как у критического</span>
+            </li>
+            <li>
+              <span className="priority priority-LOW">Low</span>
+              <span>без звука и без эскалации, ждёт медсестру палаты</span>
+            </li>
+          </ul>
+        </aside>
+      </div>
     </div>
   );
 }

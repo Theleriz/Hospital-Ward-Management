@@ -90,6 +90,26 @@ CALL pg_temp.expect_true('seed: 8 patients, 4 wards, 6 admissions, 6 nurses, 7 a
 CALL pg_temp.expect_true('seed: alert journal has 17 events written by the trigger', $q$
     SELECT COUNT(*) = 17 FROM "AlertEvent" $q$);
 
+-- Head nurse report on the seed alerts (UC-8): response time = acknowledgement - creation
+CALL pg_temp.expect_true('report: response time of acknowledged alerts (12 s, 45 s, 50 s)', $q$
+    SELECT array_agg(ROW("AlertID", "ResponseSeconds")::TEXT ORDER BY "AlertID")
+           = ARRAY['(ALT-1002,12.0)', '(ALT-1004,45.0)', '(ALT-1006,50.0)']
+    FROM "vw_AlertResponse" WHERE "Status" = 'ACKNOWLEDGED' $q$);
+
+CALL pg_temp.expect_true('report: unacknowledged alerts have no response time', $q$
+    SELECT bool_and("ResponseTime" IS NULL AND "ResponseSeconds" IS NULL)
+    FROM "vw_AlertResponse" WHERE "Status" <> 'ACKNOWLEDGED' $q$);
+
+CALL pg_temp.expect_true('report: 2 escalated alerts (ALT-1003, ALT-1006) with recipient names', $q$
+    SELECT array_agg(ROW("AlertID", "EscalatedToNurseName")::TEXT ORDER BY "AlertID")
+           = ARRAY['(ALT-1003,"Madina Tulegenova")', '(ALT-1006,"Aliya Nurlanova")']
+    FROM "vw_AlertResponse" WHERE "WasEscalated" $q$);
+
+CALL pg_temp.expect_true('report: one row per alert, no patient data', $q$
+    SELECT (SELECT COUNT(*) FROM "vw_AlertResponse") = (SELECT COUNT(*) FROM "WardAlert")
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+                       WHERE table_name = 'vw_AlertResponse' AND column_name ILIKE '%patient%') $q$);
+
 CALL pg_temp.expect_true('seed: every ward has a primary nurse', $q$
     SELECT COUNT(*) = 4 FROM "NurseAssignment" WHERE "IsPrimary" $q$);
 
@@ -526,8 +546,43 @@ CALL pg_temp.expect_error('public staff cannot acknowledge alerts',
 CALL pg_temp.expect_error('admissions staff cannot acknowledge alerts',
     $q$ CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'permission denied%', 'medbase_admissions');
 
-CALL pg_temp.expect_ok('nurse can read alerts and the journal',
-    $q$ SELECT * FROM "WardAlert" JOIN "AlertEvent" USING ("AlertID") $q$, 'medbase_nurse');
+CALL pg_temp.expect_ok('nurse can read alerts',
+    $q$ SELECT * FROM "WardAlert" $q$, 'medbase_nurse');
+
+-- Head nurse report (UC-8): only the head nurse reads the report and the journal (FR-31)
+CALL pg_temp.expect_error('nurse cannot read the alert journal',
+    $q$ SELECT * FROM "AlertEvent" $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot read the head nurse report',
+    $q$ SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('admissions staff cannot read the head nurse report',
+    $q$ SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_admissions');
+
+CALL pg_temp.expect_error('public staff cannot read the head nurse report',
+    $q$ SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_public_staff');
+
+CALL pg_temp.expect_error('alert service cannot read the head nurse report',
+    $q$ SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_alert_service');
+
+CALL pg_temp.expect_ok('head nurse can read the report and the journal',
+    $q$ SELECT * FROM "vw_AlertResponse" JOIN "AlertEvent" USING ("AlertID") $q$, 'medbase_head_nurse');
+
+CALL pg_temp.expect_true('head nurse keeps every nurse right (inherits medbase_nurse)', $q$
+    SELECT pg_has_role('medbase_head_nurse', 'medbase_nurse', 'USAGE')
+       AND has_table_privilege('medbase_head_nurse', '"WardAlert"', 'SELECT')
+       AND has_function_privilege('medbase_head_nurse', 'sp_AcknowledgeAlert(VARCHAR, VARCHAR)', 'EXECUTE')
+       AND has_function_privilege('medbase_head_nurse', 'sp_SetNurseStatus(VARCHAR, VARCHAR)', 'EXECUTE') $q$);
+
+CALL pg_temp.expect_error('head nurse cannot change alerts through the report',
+    $q$ UPDATE "vw_AlertResponse" SET "Status" = 'PENDING' WHERE "AlertID" = 'ALT-1002' $q$,
+    'cannot update view "vw_AlertResponse"%', 'medbase_head_nurse');
+
+CALL pg_temp.expect_error('head nurse cannot change the journal',
+    $q$ DELETE FROM "AlertEvent" WHERE "AlertID" = 'ALT-1002' $q$, 'permission denied%', 'medbase_head_nurse');
+
+CALL pg_temp.expect_error('head nurse cannot read PIN hashes',
+    $q$ SELECT "PinHash" FROM "Nurse" $q$, 'permission denied%', 'medbase_head_nurse');
 
 CALL pg_temp.expect_ok('nurse can read nurse names and statuses',
     $q$ SELECT "NurseID", "FullName", "Role", "Status" FROM "Nurse" $q$, 'medbase_nurse');
@@ -641,7 +696,8 @@ CALL pg_temp.expect_error('backend role cannot read PIN hashes of staff accounts
 
 CALL pg_temp.expect_true('backend role can switch to every user role but inherits none of them', $q$
     SELECT bool_and(pg_has_role('medbase_api', r, 'SET') AND NOT pg_has_role('medbase_api', r, 'USAGE'))
-    FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_alert_service']) r $q$);
+    FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_head_nurse',
+                  'medbase_alert_service']) r $q$);
 
 -- -----------------------------------------------------------------------------
 DO $$ BEGIN RAISE INFO 'ALL TESTS PASSED'; END $$;

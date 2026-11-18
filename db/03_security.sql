@@ -3,8 +3,9 @@
 -- 03. Security: view, roles, privileges
 -- Only doctors and admissions staff can access Patient / Admission data and
 -- change admission status. Public staff only see ward capacity.
--- Nurses read alerts and acknowledge them; the alert service (backend worker
--- and device simulator) raises and escalates alerts. Alert changes go only
+-- Nurses read alerts and acknowledge them; the head nurse additionally reads
+-- the response-time report and the alert journal (UC-8). The alert service
+-- (backend worker and device simulator) raises and escalates alerts. Alert changes go only
 -- through procedures: no role can write to WardAlert / AlertEvent directly,
 -- and nobody but the owner can read nurse PIN hashes.
 -- Requires: 01_schema.sql, 02_procedures.sql
@@ -24,6 +25,36 @@ FROM "Ward" w
 LEFT JOIN "Admission" a ON w."WardID" = a."WardID" AND a."Status" = 'Active'
 GROUP BY w."WardID", w."WardName", w."FloorNum", w."WardType", w."Capacity";
 
+-- Head nurse report (UC-8): one row per alert with the response time
+-- (acknowledgement minus creation, FR-29) and whether it was escalated (FR-30).
+-- Staff performance data without patient data: no patient name or ID.
+CREATE OR REPLACE VIEW "vw_AlertResponse" AS
+SELECT
+    a."AlertID",
+    a."WardID",
+    w."WardName",
+    a."Source",
+    a."Priority",
+    a."Description",
+    a."Status",
+    a."AssignedNurseID",
+    na."FullName" AS "AssignedNurseName",
+    a."EscalatedToNurseID",
+    ne."FullName" AS "EscalatedToNurseName",
+    a."AcknowledgedByNurseID",
+    nk."FullName" AS "AcknowledgedByNurseName",
+    a."CreatedAt",
+    a."EscalatedAt",
+    a."AcknowledgedAt",
+    a."AcknowledgedAt" - a."CreatedAt" AS "ResponseTime",
+    EXTRACT(EPOCH FROM a."AcknowledgedAt" - a."CreatedAt")::NUMERIC(10, 1) AS "ResponseSeconds",
+    a."EscalatedToNurseID" IS NOT NULL AS "WasEscalated"
+FROM "WardAlert" a
+JOIN "Ward" w ON w."WardID" = a."WardID"
+LEFT JOIN "Nurse" na ON na."NurseID" = a."AssignedNurseID"
+LEFT JOIN "Nurse" ne ON ne."NurseID" = a."EscalatedToNurseID"
+LEFT JOIN "Nurse" nk ON nk."NurseID" = a."AcknowledgedByNurseID";
+
 -- Roles are cluster-wide, so create them only if missing
 DO $$
 BEGIN
@@ -34,7 +65,10 @@ BEGIN
         CREATE ROLE medbase_public_staff NOLOGIN;  -- other hospital staff
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_nurse') THEN
-        CREATE ROLE medbase_nurse NOLOGIN;  -- ward nurses and head nurses
+        CREATE ROLE medbase_nurse NOLOGIN;  -- ward nurses
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_head_nurse') THEN
+        CREATE ROLE medbase_head_nurse NOLOGIN;  -- head nurse: a nurse plus the report (UC-8)
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_alert_service') THEN
         CREATE ROLE medbase_alert_service NOLOGIN;  -- escalation worker, device simulator
@@ -49,7 +83,11 @@ BEGIN
 END;
 $$;
 
-GRANT medbase_admissions, medbase_public_staff, medbase_nurse, medbase_alert_service TO medbase_api;
+GRANT medbase_admissions, medbase_public_staff, medbase_nurse, medbase_head_nurse, medbase_alert_service
+    TO medbase_api;
+
+-- The head nurse can do everything a nurse can (inherits medbase_nurse)
+GRANT medbase_nurse TO medbase_head_nurse;
 
 -- Procedures are executable by PUBLIC by default; restrict all of them
 REVOKE EXECUTE ON PROCEDURE sp_AdmitPatient(INT, INT) FROM PUBLIC;
@@ -71,13 +109,17 @@ GRANT EXECUTE ON PROCEDURE sp_DischargePatient(INT) TO medbase_admissions;
 -- Public staff
 GRANT SELECT ON "vw_WardCapacity" TO medbase_public_staff;
 
--- Nurses: read-only access to alerts, the journal and the nurse list (without PIN
--- hashes); the patient's name is visible so the nurse knows whom the alert is about
-GRANT SELECT ON "WardAlert", "AlertEvent", "Ward", "NurseAssignment", "vw_WardCapacity" TO medbase_nurse;
+-- Nurses: read-only access to alerts and the nurse list (without PIN hashes);
+-- the patient's name is visible so the nurse knows whom the alert is about
+GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment", "vw_WardCapacity" TO medbase_nurse;
 GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_nurse;
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) TO medbase_nurse;
+
+-- Head nurse: the response-time report and the full alert journal (UC-8, FR-31);
+-- ward nurses do not get them
+GRANT SELECT ON "vw_AlertResponse", "AlertEvent" TO medbase_head_nurse;
 
 -- Alert service: reads what it needs to choose a nurse and find overdue alerts.
 -- The device simulator shows which patient lies in which ward (name only).

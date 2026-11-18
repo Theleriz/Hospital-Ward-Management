@@ -12,7 +12,9 @@ import {
   type NurseStatus,
   type Priority,
 } from "./api";
+import { SoundOffIcon, SoundOnIcon } from "./icons";
 import { playAlertSound } from "./sound";
+import { Stat } from "./WardBoard";
 
 // NFR-01: an alert must be on screen within 2 seconds
 const POLL_MS = 1000;
@@ -41,6 +43,12 @@ function formatAge(seconds: number): string {
 
 function responseSeconds(alert: Alert): number {
   return Math.round((Date.parse(alert.acknowledged_at!) - Date.parse(alert.created_at)) / 1000);
+}
+
+function averageResponse(alerts: Alert[]): string {
+  if (!alerts.length) return "реакция —";
+  const total = alerts.reduce((sum, a) => sum + responseSeconds(a), 0);
+  return `средняя реакция ${formatAge(Math.round(total / alerts.length))}`;
 }
 
 /** Nurse workstation: alerts of my wards, acknowledgement, my status (UC-5 to UC-7). */
@@ -115,6 +123,9 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
     }
   }
 
+  const critical = board?.open.filter((a) => a.priority === "CRITICAL").length ?? 0;
+  const escalated = board?.open.filter((a) => a.status === "ESCALATED").length ?? 0;
+
   return (
     <div className="stack">
       <section className="card post-head">
@@ -142,8 +153,9 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
               </button>
             ))}
           </div>
-          <button type="button" className="secondary" onClick={toggleSound} aria-pressed={sound}>
-            {sound ? "Звук: вкл" : "Звук: выкл"}
+          <button type="button" className="secondary toggle" onClick={toggleSound} aria-pressed={sound}>
+            {sound ? <SoundOnIcon size={18} /> : <SoundOffIcon size={18} />}
+            {sound ? "Звук включён" : "Звук выключен"}
           </button>
         </div>
       </section>
@@ -159,10 +171,33 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
         </p>
       )}
 
+      {board && (
+        <div className="stats">
+          <Stat label="Активные" value={board.open.length} sub={headNurse ? "по отделению" : "в ваших палатах"} />
+          <Stat
+            label="Критические"
+            value={critical}
+            tone={critical ? "down" : undefined}
+            sub={critical ? "требуют реакции сейчас" : "нет"}
+          />
+          <Stat
+            label="Эскалированы"
+            value={escalated}
+            tone={escalated ? "warn" : undefined}
+            sub="не подтверждены за 30 с"
+          />
+          <Stat label="Подтверждено за час" value={board.recent.length} tone="ok" sub={averageResponse(board.recent)} />
+        </div>
+      )}
+
       <section>
         <div className="section-head">
           <h2>Активные оповещения</h2>
-          <span className="hint">{board ? `${board.open.length} · обновляется каждую секунду` : "загрузка…"}</span>
+          {board ? (
+            <span className="hint live">обновляется каждую секунду</span>
+          ) : (
+            <span className="hint">загрузка…</span>
+          )}
         </div>
         {board && board.open.length === 0 && <p className="card empty">Активных оповещений нет</p>}
         <div className="alert-list" aria-live="polite">
@@ -201,7 +236,7 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
                       {a.acknowledged_by_name}
                       {a.escalated_to_id && <span className="hint block">после эскалации</span>}
                     </td>
-                    <td>{formatAge(responseSeconds(a))}</td>
+                    <td className="num">{formatAge(responseSeconds(a))}</td>
                   </tr>
                 ))}
               </tbody>
