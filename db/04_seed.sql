@@ -27,6 +27,7 @@
 --   ALT-1001  CRITICAL  PENDING       ward 101  5 min old -> overdue, can be escalated
 --   ALT-1002  HIGH      ACKNOWLEDGED  ward 102  acknowledged by NURSE-02 after 12 s
 --   ALT-1003  CRITICAL  ESCALATED     ward 101  NURSE-01 -> NURSE-03, not acknowledged
+--             (escalated 30 min ago, so the next escalation round sends it on, decisions.md record 9)
 --   ALT-1004  LOW       ACKNOWLEDGED  ward 102  acknowledged by NURSE-03 after 45 s
 --   ALT-1005  HIGH      PENDING       ward 102  10 s old right after seeding -> not overdue yet
 --   ALT-1006  HIGH      ACKNOWLEDGED  ward 101  escalated to NURSE-04, acknowledged by NURSE-04

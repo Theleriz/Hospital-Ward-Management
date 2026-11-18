@@ -250,8 +250,14 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
 
 function AlertCard({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: () => void }) {
   const [busy, setBusy] = useState(false);
-  const escalates = alert.priority !== "LOW" && alert.status === "PENDING";
-  const left = ESCALATE_AFTER_S - alert.age_seconds;
+  // HIGH/CRITICAL move on after 30 s: from creation, or from the last escalation (repeat escalation).
+  // Both times come from the server, so the browser clock does not matter.
+  const escalates = alert.priority !== "LOW" && alert.status !== "ACKNOWLEDGED";
+  const escalatedAfter = alert.escalated_at
+    ? Math.round((Date.parse(alert.escalated_at) - Date.parse(alert.created_at)) / 1000)
+    : 0;
+  const left = ESCALATE_AFTER_S - (alert.age_seconds - escalatedAfter);
+  const next = alert.status === "ESCALATED" ? "следующей медсестре" : "эскалация";
 
   return (
     <article className={`card alert alert-${alert.priority}${alert.mine ? "" : " alert-other"}`}>
@@ -271,7 +277,10 @@ function AlertCard({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: () =
           )}
           {escalates &&
             (left > 0 ? (
-              <span className="hint"> · эскалация через {left} с</span>
+              <span className="hint">
+                {" "}
+                · {next} через {left} с
+              </span>
             ) : (
               <span className="escalated"> · ждёт свободную медсестру для эскалации</span>
             ))}

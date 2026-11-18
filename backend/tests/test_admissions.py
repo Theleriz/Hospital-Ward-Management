@@ -168,14 +168,18 @@ def test_transfer_of_patient_not_admitted(client):
     assert client.post("/api/admissions/5/transfer", json={"ward_id": 103}).status_code == 404
 
 
-# --- UC-3: discharge ------------------------------------------------------------------
+
+# --- UC-3: discharge ------------------------------------------------------
 
 def test_discharge(client):
     login(client, ADMISSIONS)
 
     assert client.post("/api/admissions/4/discharge").status_code == 204
 
-    assert 4 not in [a["patient_id"] for a in client.get("/api/admissions/active").json()]
+    assert 4 not in [
+        a["patient_id"]
+        for a in client.get("/api/admissions/active").json()
+    ]
     assert wards_by_id(client)[102]["occupied"] == 1
 
 
@@ -183,3 +187,71 @@ def test_discharge_of_patient_not_admitted(client):
     login(client, ADMISSIONS)
 
     assert client.post("/api/admissions/5/discharge").status_code == 404
+
+
+# --- UC-1 to UC-4: Complete patient lifecycle ----------------------------
+
+def test_patient_admission_transfer_discharge_lifecycle(client):
+    login(client, ADMISSIONS)
+
+    # 1. Check initial ward occupancy
+    wards = wards_by_id(client)
+    assert wards[102]["occupied"] == 2
+    assert wards[102]["available"] == 2
+    assert wards[103]["occupied"] == 0
+    assert wards[103]["available"] == 3
+
+    # 2. Admit a new patient to Ward 102
+    patient = {
+        **NEW_PATIENT,
+        "ward_id": 102,
+    }
+
+    response = client.post("/api/admissions", json=patient)
+    assert response.status_code == 201
+    patient_id = response.json()["patient_id"]
+
+    wards = wards_by_id(client)
+    assert wards[102]["occupied"] == 3
+    assert wards[102]["available"] == 1
+
+    # 3. Transfer the patient to Ward 103
+    response = client.post(
+        f"/api/admissions/{patient_id}/transfer",
+        json={"ward_id": 103},
+    )
+    assert response.status_code == 200
+
+    wards = wards_by_id(client)
+    assert wards[102]["occupied"] == 2
+    assert wards[102]["available"] == 2
+    assert wards[103]["occupied"] == 1
+    assert wards[103]["available"] == 2
+
+    # 4. Discharge the patient
+    response = client.post(f"/api/admissions/{patient_id}/discharge")
+    assert response.status_code == 204
+
+    wards = wards_by_id(client)
+    assert wards[102]["occupied"] == 2
+    assert wards[102]["available"] == 2
+    assert wards[103]["occupied"] == 0
+    assert wards[103]["available"] == 3
+
+    # 5. Verify the patient is no longer actively admitted
+    active = client.get("/api/admissions/active").json()
+    assert patient_id not in [a["patient_id"] for a in active]
+
+    # 6. Verify that ward occupancy matches active admissions
+    wards = wards_by_id(client)
+    active = client.get("/api/admissions/active").json()
+
+    for ward_id, ward in wards.items():
+        actual_patients = sum(
+            1 for admission in active
+            if admission["ward_id"] == ward_id
+        )
+
+        assert ward["occupied"] == actual_patients
+        assert ward["available"] == ward["capacity"] - actual_patients
+
