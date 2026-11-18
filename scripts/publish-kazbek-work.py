@@ -78,6 +78,16 @@ def main():
     result = {'pull_requests': [], 'reviews': []}
     for branch, title, body in BRANCHES:
         git('push', '-u', 'origin', branch)
+        body += ('\n\n## Проверка\n'
+                 '- [x] Ветка от main 29d4780; предыдущие этапы включены как зависимости.\n'
+                 '- [x] Локальный эквивалент db-check на изолированной БД: SQL-тесты, demo, queries, повтор setup и SQL-тестов.\n'
+                 '- [x] Проверены документы и семь Mermaid-диаграмм.\n'
+                 '- [ ] Удалённые db-check, backend-tests, frontend-build, system-start зелёные — проверить после создания PR.\n')
+        if branch != 'docs/t36-polling-architecture':
+            body += ('- [x] Реальный Chromium: 12/12 доставок <=2 с; первые и повторные эскалации 30..35 с.\n')
+        if branch == 'feature/t48-persistent-login-lockout':
+            body += ('- [x] 256 backend-тестов, два настоящих рестарта, добавочная миграция сохранила все строки 8 таблиц.\n'
+                     '- [ ] SQL-ревью Nurali и окончательная проверка Lead.\n')
         query = urllib.parse.urlencode({'state': 'open', 'head': 'Theleriz:' + branch})
         prs = api(f'/repos/{REPO}/pulls?{query}')
         pr = prs[0] if prs else api(f'/repos/{REPO}/pulls', dict(title=title, head=branch, base='main', body=body))

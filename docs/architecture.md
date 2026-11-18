@@ -361,6 +361,7 @@ backend отвечает `403` всем ролям, кроме `HeadNurse`.
 | Нет данных пациентов у PublicStaff | `vw_WardCapacity`, SQL- и backend-тесты ролей, тест полей ответа `GET /api/wards` | Проверять каждый новый экран для `PublicStaff` |
 | PIN не раскрывается приложению | `fn_LoginStaff` → приватный `fn_AuthenticateStaff`, столбцовые GRANT | Не логировать тело login-запроса |
 | Блокировка переживает рестарт | `tests/test_login_lockout.py`, `scripts/check-login-lockout.sh` | Ревью SQL-части Data & Database |
+| Доставка на пост ≤2 с, эскалация 30–35 с | `scripts/check-alert-timing.sh`, [методика и результаты](testing/alert-timing-report.md) | Повторять после изменения опроса/worker; это не нагрузочный тест |
 | Cookie нельзя изменить незаметно | pytest на изменённую cookie | Включить HTTPS/Secure для production |
 | Журнал append-only | trigger и SQL-тесты; отчёт только читает (SQL-тест: представление не изменяется, журнал не удаляется ролью старшей медсестры) | — |
 | `main` готова к демо | `.github/workflows/ci.yml`: `db-check`, `backend-tests`, `frontend-build`, `system-start` | Приёмка T-40; скорость экрана и worker — T-29 |
