@@ -17,7 +17,7 @@
 Подробно с командами: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 1. **Ветка `main` всегда готова к демо.** В любой момент из `main` можно показать корректно работающий проект: база собирается с нуля, автотесты проходят, `db/demo.sql` отрабатывает до конца. Всё это проверяет одна команда `bash scripts/check-db.sh`, и та же проверка автоматически запускается в CI на каждый PR. Незаконченная работа в `main` не попадает.
-2. **Все изменения — через Pull Request (PR).** Прямой push в `main` запрещён, PR сливается только при зелёной проверке CI `db-check`. Сливать PR в `main` и пушить в неё напрямую может только `theleriz` (zanatrisat54@gmail.com). Это закреплено правилами ветки на GitHub.
+2. **Все изменения — через Pull Request (PR).** Прямой push в `main` запрещён, PR сливается только при зелёных проверках CI (`db-check`, `backend-tests`, `frontend-build`, `system-start`). Сливать PR в `main` и пушить в неё напрямую может только `theleriz` (zanatrisat54@gmail.com). Это закреплено правилами ветки на GitHub.
 3. **Начинать работу от свежей `main`.** Перед новой функциональностью или новым документом обновите `main` и создайте ветку от неё, чтобы не было рассинхрона:
 
    ```bash
@@ -61,7 +61,7 @@ BIS/
 ├── scripts/
 │   └── check-db.sh             # проверка «main готова к демо» (локально и в CI)
 ├── .github/
-│   ├── workflows/db.yml        # CI: запускает scripts/check-db.sh на каждый PR и push в main
+│   ├── workflows/ci.yml        # CI: база, тесты backend, сборка интерфейса, запуск всей системы
 │   └── pull_request_template.md     # чек-лист для каждого PR
 ├── CONTRIBUTING.md             # правила работы с репозиторием
 └── README.md
@@ -228,22 +228,23 @@ docker exec -it medbase-postgres psql -U medbase -d hospital_ward -f /db/demo.sq
 
 ## CI
 
-Workflow [`.github/workflows/db.yml`](.github/workflows/db.yml) (проверка `db-check`) запускается на каждый PR в `main`, на каждый push в `main` и вручную (Actions → DB CI → Run workflow). Он выполняет `scripts/check-db.sh`:
+Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускается на каждый PR в `main`, на каждый push в `main` и вручную (Actions → CI → Run workflow). Четыре проверки идут параллельно, и все они должны быть зелёными:
+
+| Проверка | Что делает | Как повторить у себя |
+|---|---|---|
+| `db-check` | `scripts/check-db.sh`: база с нуля, SQL-тесты, демо до конца, `05_queries.sql`, повторный `setup.sql` и тесты ещё раз | `bash scripts/check-db.sh` |
+| `backend-tests` | поднимает чистую базу (`docker compose up -d --wait db`) и запускает все тесты backend (pytest); отчёт JUnit сохраняется как артефакт запуска | `docker compose up -d --wait db`, затем в `backend`: `python -m pytest` |
+| `frontend-build` | `npm ci` и `npm run build`: проверка типов TypeScript и production-сборка | в `frontend`: `npm ci`, `npm run build` |
+| `system-start` | `docker compose up -d --build --wait` всей системы (NFR-05), затем через nginx на порту 8080: главная страница, `/api/health` с подключённой базой, вход тестовой старшей медсестрой и отчёт | `docker compose up -d --build --wait` |
+
+Что делает `db-check` по шагам:
 
 1. собирает базу с нуля через `docker compose` (пустой volume);
 2. запускает автотесты;
 3. прогоняет `db/demo.sql` до конца: ожидаемые ошибки демо допустимы, а сломанный SQL (`syntax error`, `relation ... does not exist` и т. п.) — нет;
 4. выполняет `db/05_queries.sql`, повторно запускает `db/setup.sql` и ещё раз тесты.
 
-Ту же проверку можно запустить у себя перед открытием PR (в Git Bash на Windows):
-
-```bash
-bash scripts/check-db.sh
-```
-
-**Внимание:** скрипт пересоздаёт локальную базу (`docker compose down -v`), поэтому данные, введённые вручную, пропадут.
-
-Пока CI проверяет только базу данных: `check-db.sh` поднимает только сервис `db`. Проверка backend и интерфейса в CI — задача T-28 из [плана](docs/project-plan.md). Проверки для новых компонентов добавляются по решению `theleriz`.
+**Внимание:** `check-db.sh` пересоздаёт локальную базу (`docker compose down -v`), поэтому данные, введённые вручную, пропадут. Тесты backend перезаливают тестовые данные перед каждым тестом; запускайте их только на локальной базе. Перед ними остановите контейнер backend (`docker compose stop backend`): его фоновая эскалация меняет те же данные.
 
 ## Типовые действия
 
