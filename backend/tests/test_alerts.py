@@ -257,13 +257,14 @@ def alert_status(client, alert_id: str) -> dict:
 
 
 def test_overdue_alert_is_escalated_to_an_available_nurse(client):
-    # ALT-1001 is 5 minutes old; nobody else in ward 101 is Available,
-    # so it goes to the first Available nurse of the department
-    assert escalate_overdue(client.app.state.pool) == [("ALT-1001", "NURSE-03")]
+    # ALT-1001 is 5 minutes old; nobody else in ward 101 is Available, so it goes to
+    # NURSE-04, who works on the same floor (ward 104). ALT-1003 was escalated to
+    # NURSE-03 30 minutes ago and is still not acknowledged, so it goes on as well.
+    assert dict(escalate_overdue(client.app.state.pool)) == {"ALT-1001": "NURSE-04", "ALT-1003": "NURSE-04"}
 
     alert = alert_status(client, "ALT-1001")
     assert alert["status"] == "ESCALATED"
-    assert alert["escalated_to_id"] == "NURSE-03"
+    assert alert["escalated_to_id"] == "NURSE-04"
     assert alert["assigned_nurse_id"] == "NURSE-01"
 
 
@@ -298,7 +299,8 @@ def test_no_escalation_when_nobody_is_available(client):
     assert alert_status(client, "ALT-1001")["status"] == "PENDING"
 
 
-def test_an_alert_is_escalated_only_once(client):
+def test_no_repeat_escalation_within_30_seconds(client):
     escalate_overdue(client.app.state.pool)
 
+    # The nurses who just received the alerts have 30 seconds to acknowledge them
     assert escalate_overdue(client.app.state.pool) == []

@@ -235,8 +235,12 @@ $$;
 -- Procedure 5: sp_EscalateAlert
 -- Business Logic: forwarding an unacknowledged alert to another nurse (UC-7)
 -- The backend finds overdue alerts and picks the nurse; the procedure re-checks
--- the escalation rules (decisions.md, records 1 and 5):
--- only PENDING HIGH/CRITICAL alerts, at least 30 seconds old, to an Available nurse.
+-- the escalation rules (decisions.md, records 1, 5 and 9):
+-- only HIGH/CRITICAL alerts that are not acknowledged, to an Available nurse:
+--   PENDING   -> at least 30 seconds after creation;
+--   ESCALATED -> at least 30 seconds after the last escalation (repeat escalation),
+--                never to the nurse it is already escalated to.
+-- The assigned nurse never receives the alert back.
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE sp_EscalateAlert(
     p_AlertID VARCHAR,
@@ -250,6 +254,7 @@ DECLARE
     v_Alert "WardAlert"%ROWTYPE;
     v_NurseStatus VARCHAR(20);
     v_AgeSeconds INT;
+    v_WaitSeconds INT;
 BEGIN
     -- 1. Verify Alert existence (lock it so a parallel acknowledgement waits)
     SELECT * INTO v_Alert FROM "WardAlert" WHERE "AlertID" = p_AlertID FOR UPDATE;
@@ -259,8 +264,8 @@ BEGIN
     END IF;
 
     -- 2. Escalation rules
-    IF v_Alert."Status" <> 'PENDING' THEN
-        RAISE EXCEPTION 'Alert ID % is not pending (status %).', p_AlertID, v_Alert."Status";
+    IF v_Alert."Status" = 'ACKNOWLEDGED' THEN
+        RAISE EXCEPTION 'Alert ID % is already acknowledged.', p_AlertID;
     END IF;
 
     IF v_Alert."Priority" = 'LOW' THEN
@@ -270,6 +275,14 @@ BEGIN
     v_AgeSeconds := EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - v_Alert."CreatedAt")::INT;
     IF v_AgeSeconds < 30 THEN
         RAISE EXCEPTION 'Alert ID % is not overdue yet (% s old, escalation after 30 s).', p_AlertID, v_AgeSeconds;
+    END IF;
+
+    -- Repeat escalation: the nurse it was escalated to also gets 30 seconds
+    IF v_Alert."Status" = 'ESCALATED' THEN
+        v_WaitSeconds := EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - v_Alert."EscalatedAt")::INT;
+        IF v_WaitSeconds < 30 THEN
+            RAISE EXCEPTION 'Alert ID % was escalated % s ago (next escalation after 30 s).', p_AlertID, v_WaitSeconds;
+        END IF;
     END IF;
 
     -- 3. Target nurse must exist, be Available and differ from the assigned nurse
@@ -287,7 +300,11 @@ BEGIN
         RAISE EXCEPTION 'Nurse % is already assigned to alert %.', p_ToNurseID, p_AlertID;
     END IF;
 
-    -- 4. Escalate (the trigger logs ESCALATED)
+    IF p_ToNurseID = v_Alert."EscalatedToNurseID" THEN
+        RAISE EXCEPTION 'Alert % is already escalated to nurse %.', p_AlertID, p_ToNurseID;
+    END IF;
+
+    -- 4. Escalate (the trigger logs ESCALATED, once per escalation)
     UPDATE "WardAlert"
     SET "Status" = 'ESCALATED',
         "EscalatedToNurseID" = p_ToNurseID,
