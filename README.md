@@ -60,6 +60,9 @@ BIS/
 │       └── <Фамилия>_<Имя>/    #   например Zhanat_Rishat/24B031775_Zhanat_Rishat_Task2.docx
 ├── scripts/
 │   └── check-db.sh             # проверка «main готова к демо» (локально и в CI)
+│   ├── backup-db.sh            # резервное копирование БД через pg_dump (T-44)
+│   ├── restore-db.sh           # восстановление БД из SQL-дампа (T-44)
+│   └── check-backup.sh         # проверка бэкапа и восстановления на временной БД (T-44)
 ├── .github/
 │   ├── workflows/ci.yml        # CI: база, тесты backend, сборка интерфейса, запуск всей системы
 │   └── pull_request_template.md     # чек-лист для каждого PR
@@ -267,6 +270,15 @@ docker compose down -v
 ```
 
 Тесты рассчитаны на состояние после `04_seed.sql`.
+
+# Создать резервную копию БД в папку backups/ (T-44)
+bash scripts/backup-db.sh
+
+# Восстановить БД из файла резервной копии (T-44)
+bash scripts/restore-db.sh backups/<имя_файла>.sql
+
+# Проверить полный цикл бэкапа и восстановления на временной БД (T-44)
+bash scripts/check-backup.sh
 
 ## Что реализовано (база данных v2)
 
