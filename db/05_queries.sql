@@ -93,6 +93,6 @@ ORDER BY e."EventID";
 -- CALL sp_RegisterAndAdmitPatient('Dana Seitkali', '1990-02-14', '+77015550109', 'Female', 104);
 -- CALL sp_DischargePatient(4);                        -- discharge
 -- CALL sp_RaiseAlert(101, 1, 'MONITOR', 'CRITICAL', 'SpO2 83%', 'NURSE-01', NULL);  -- returns ALT-...
--- CALL sp_EscalateAlert('ALT-1001', 'NURSE-03');      -- only overdue HIGH/CRITICAL, to an Available nurse
+-- CALL sp_EscalateAlert('ALT-1001', 'NURSE-03');      -- only overdue HIGH/CRITICAL; a Busy nurse only if nobody is Available
 -- CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-03');
 -- CALL sp_SetNurseStatus('NURSE-02', 'Available');
