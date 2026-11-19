@@ -80,7 +80,10 @@ ALERT_SQL = """
            a."CreatedAt", a."EscalatedAt", a."AcknowledgedAt",
            EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - a."CreatedAt")::INT,
            EXISTS (SELECT 1 FROM "NurseAssignment" x
-                   WHERE x."NurseID" = %(me)s AND x."WardID" = a."WardID") AS "InMyWard"
+                   WHERE x."NurseID" = %(me)s AND x."WardID" = a."WardID") AS "InMyWard",
+           EXISTS (SELECT 1 FROM "AlertEvent" e
+                   WHERE e."AlertID" = a."AlertID" AND e."EventType" = 'ESCALATED'
+                     AND e."NurseID" = %(me)s) AS "CalledMe"
     FROM "WardAlert" a
     JOIN "Ward" w ON w."WardID" = a."WardID"
     LEFT JOIN "Patient" p ON p."PatientID" = a."PatientID"
@@ -89,11 +92,14 @@ ALERT_SQL = """
     LEFT JOIN "Nurse" nk ON nk."NurseID" = a."AcknowledgedByNurseID"
 """
 
-# A nurse sees the alerts of her or his wards and those assigned or escalated to her or him;
+# A nurse sees the alerts of her or his wards and those assigned or escalated to her or him,
+# including earlier escalations: she or he may already be on the way (decisions.md record 13);
 # a head nurse sees every alert of the department
 MINE_SQL = """
     (a."AssignedNurseID" = %(me)s OR a."EscalatedToNurseID" = %(me)s
-     OR EXISTS (SELECT 1 FROM "NurseAssignment" x WHERE x."NurseID" = %(me)s AND x."WardID" = a."WardID"))
+     OR EXISTS (SELECT 1 FROM "NurseAssignment" x WHERE x."NurseID" = %(me)s AND x."WardID" = a."WardID")
+     OR EXISTS (SELECT 1 FROM "AlertEvent" e
+                WHERE e."AlertID" = a."AlertID" AND e."EventType" = 'ESCALATED' AND e."NurseID" = %(me)s))
 """
 
 PRIORITY_ORDER = """CASE a."Priority" WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 ELSE 3 END"""
@@ -105,7 +111,7 @@ def nurse_status(conn: Connection, nurse_id: str) -> str:
 
 
 def alert_from_row(row, me: str, on_shift: bool) -> Alert:
-    mine = me in (row[8], row[10]) or row[18]
+    mine = me in (row[8], row[10]) or row[18] or row[19]
     return Alert(
         alert_id=row[0], ward_id=row[1], ward_name=row[2], patient_name=row[3], source=row[4],
         priority=row[5], description=row[6], status=row[7],

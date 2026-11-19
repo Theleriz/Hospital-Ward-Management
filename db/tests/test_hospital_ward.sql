@@ -493,8 +493,15 @@ CALL pg_temp.expect_true('ALT-1001 acknowledged by NURSE-03, assigned nurse NURS
 CALL pg_temp.expect_ok('assigned nurse NURSE-01 acknowledges ALT-1007', $q$
     CALL sp_AcknowledgeAlert('ALT-1007', 'NURSE-01') $q$);
 
-CALL pg_temp.expect_ok('ward 101 colleague NURSE-02 acknowledges escalated ALT-1003', $q$
-    CALL sp_AcknowledgeAlert('ALT-1003', 'NURSE-02') $q$);
+-- ALT-1003 went NURSE-03 -> NURSE-04 -> NURSE-02 (section 6). NURSE-04 works in ward 104,
+-- not 101, but was called earlier and may already be at the bed (decisions.md, record 13)
+CALL pg_temp.expect_ok('earlier escalation target NURSE-04 (another ward) acknowledges ALT-1003', $q$
+    CALL sp_AcknowledgeAlert('ALT-1003', 'NURSE-04') $q$);
+
+CALL pg_temp.expect_true('ALT-1003 acknowledged by NURSE-04, last escalation target NURSE-02 kept', $q$
+    SELECT "Status" = 'ACKNOWLEDGED' AND "AcknowledgedByNurseID" = 'NURSE-04'
+           AND "EscalatedToNurseID" = 'NURSE-02'
+    FROM "WardAlert" WHERE "AlertID" = 'ALT-1003' $q$);
 
 CALL pg_temp.expect_ok('re-acknowledging ALT-1002 is a no-op', $q$
     CALL sp_AcknowledgeAlert('ALT-1002', 'NURSE-99') $q$);
@@ -608,6 +615,13 @@ CALL pg_temp.expect_ok('nurse can read alerts',
 -- Head nurse report (UC-8): only the head nurse reads the report and the journal (FR-31)
 CALL pg_temp.expect_error('nurse cannot read the alert journal',
     $q$ SELECT * FROM "AlertEvent" $q$, 'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('nurse cannot read journal times',
+    $q$ SELECT "OccurredAt" FROM "AlertEvent" $q$, 'permission denied%', 'medbase_nurse');
+
+-- decisions.md, record 13: who was called, so an earlier escalation target keeps the alert
+CALL pg_temp.expect_ok('nurse can read who was called for an alert',
+    $q$ SELECT "AlertID", "EventType", "NurseID" FROM "AlertEvent" $q$, 'medbase_nurse');
 
 CALL pg_temp.expect_error('nurse cannot read the head nurse report',
     $q$ SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_nurse');
