@@ -293,7 +293,7 @@ def test_fresh_and_low_alerts_are_not_escalated(client):
 
 
 def test_no_escalation_when_nobody_else_is_on_shift(client):
-    # A Busy nurse is still called (decisions.md, record 10), an off-shift one never
+    # A Busy nurse is still called (decisions.md, record 12), an off-shift one never
     run_as_owner("""UPDATE "Nurse" SET "Status" = 'OffShift' WHERE "NurseID" <> 'NURSE-01'""")
 
     assert escalate_overdue(client.app.state.pool) == []

@@ -235,7 +235,7 @@ $$;
 -- Procedure 5: sp_EscalateAlert
 -- Business Logic: forwarding an unacknowledged alert to another nurse (UC-7)
 -- The backend finds overdue alerts and picks the nurse; the procedure re-checks
--- the escalation rules (decisions.md, records 1, 5, 9 and 10):
+-- the escalation rules (decisions.md, records 1, 5, 9 and 12):
 -- only HIGH/CRITICAL alerts that are not acknowledged, to a nurse on shift:
 --   PENDING   -> at least 30 seconds after creation;
 --   ESCALATED -> at least 30 seconds after the last escalation (repeat escalation).
@@ -311,7 +311,7 @@ BEGIN
         RAISE EXCEPTION 'Nurse % was already called for alert % and did not answer.', p_ToNurseID, p_AlertID;
     END IF;
 
-    -- A Busy nurse only when nobody Available is left to call (decisions.md, record 10)
+    -- A Busy nurse only when nobody Available is left to call (decisions.md, record 12)
     IF v_NurseStatus = 'Busy' THEN
         SELECT n."NurseID" INTO v_FreeNurseID
         FROM "Nurse" n

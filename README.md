@@ -72,7 +72,9 @@ BIS/
 - **[docs/works/](docs/works/)** — работы всех участников. У каждого своя папка `<Фамилия>_<Имя>`, файлы называются `<StudentID>_<Фамилия>_<Имя>_Task<N>.docx`.
 - **[docs/decisions.md](docs/decisions.md)** — журнал критических решений по проекту: смена технологии, способ работы с чем-то важным и т. п. Мелкие решения, которые не влияют на проект, туда не пишутся. Шаблон записи — в начале файла.
 - **[docs/architecture.md](docs/architecture.md)** — компоненты и потоки данных, контракт API, роли, два слоя защиты, модель угроз и известные ограничения (T-30).
-- **[docs/sequence-diagrams.md](docs/sequence-diagrams.md)** — sequence-диаграммы входа, госпитализации, перевода, выписки, оповещений и эскалации (UC-1 — UC-7).
+- **[docs/testing/login-lockout-report.md](docs/testing/login-lockout-report.md)** — T-48: блокировка PIN в PostgreSQL, добавочная миграция и демонстрация реального рестарта: `bash scripts/check-login-lockout.sh`.
+- **[docs/testing/alert-timing-report.md](docs/testing/alert-timing-report.md)** — T-29: настоящий Chromium, 12 замеров доставки и первая/повторная эскалация: `bash scripts/check-alert-timing.sh`.
+- **[docs/sequence-diagrams.md](docs/sequence-diagrams.md)** — sequence-диаграммы входа, госпитализации, перевода, выписки, оповещений, эскалации и отчёта старшей медсестры (UC-1 — UC-8).
 - **[docs/testing/api-permissions-report.md](docs/testing/api-permissions-report.md)** — матрица прав реальных API и воспроизводимый отчёт Shynbulat Kazbek; запуск в отдельной тестовой БД: `bash scripts/check-api-permissions.sh`.
 
 Документы добавляются так же, как код: через ветку от свежей `main` и PR. Подробнее — в [CONTRIBUTING.md](CONTRIBUTING.md#документы).
@@ -288,7 +290,7 @@ docker compose down -v
 - **`WardAlert`** хранит отдельно назначенную медсестру, медсестру эскалации и подтвердившую медсестру, а также время создания, эскалации и подтверждения. По ним считается время реакции. Ограничения не дают сохранить несогласованное оповещение (подтверждено без медсестры, эскалирован `LOW` и т. п.).
 - **`AlertEvent`** — журнал событий (`CREATED`, `ASSIGNED`, `ESCALATED`, `ACKNOWLEDGED`). Его заполняет триггер на `WardAlert`, а изменить или удалить запись нельзя даже владельцу базы.
 - **`sp_RaiseAlert(ward, patient, source, priority, description, nurse, NULL)`** — создаёт оповещение и возвращает его номер (`ALT-…`). Проверяет, что пациент лежит в этой палате, а медсестра работает в ней и на смене.
-- **`sp_EscalateAlert(alert, nurse)`** — эскалация `HIGH` / `CRITICAL`: `PENDING` не раньше чем через 30 с после создания, `ESCALATED` (повторная) не раньше чем через 30 с после прошлой эскалации; только на медсестру на смене, не назначенную и которую по этому оповещению ещё не звали; `Busy` — только если не осталось свободной (`decisions.md`, запись 10).
+- **`sp_EscalateAlert(alert, nurse)`** — эскалация `HIGH` / `CRITICAL`: `PENDING` не раньше чем через 30 с после создания, `ESCALATED` (повторная) не раньше чем через 30 с после прошлой эскалации; только на медсестру на смене, не назначенную и которую по этому оповещению ещё не звали; `Busy` — только если не осталось свободной (`decisions.md`, запись 12).
 - **`sp_AcknowledgeAlert(alert, nurse)`** — подтверждение: назначенной медсестрой, медсестрой эскалации или медсестрой этой палаты. Назначенная медсестра при этом не затирается.
 - **`sp_SetNurseStatus(nurse, status)`** — смена статуса медсестры.
 - **Тестовые медсёстры и их PIN** перечислены в начале [db/04_seed.sql](db/04_seed.sql).

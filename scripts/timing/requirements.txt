@@ -1,0 +1,3 @@
+# Must match the browser image tag in Dockerfile.
+playwright==1.64.1
+psycopg[binary]==3.3.6

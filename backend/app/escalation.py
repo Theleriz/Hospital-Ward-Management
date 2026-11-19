@@ -4,7 +4,7 @@ Every couple of seconds the backend looks for HIGH/CRITICAL alerts nobody has
 acknowledged: PENDING ones older than 30 seconds, and ESCALATED ones whose last
 escalation is older than 30 seconds (repeat escalation, decisions.md record 9).
 Each goes to a nurse on shift who was not called for this alert yet and is not
-the assigned one (decisions.md record 10), in this order:
+the assigned one (decisions.md record 12), in this order:
 
   1. an Available nurse: of the same ward, then of the same floor, then anyone;
   2. the head nurse, if Available;

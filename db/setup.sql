@@ -12,6 +12,9 @@
 \ir 02_procedures.sql
 \echo '>> 03_security.sql'
 \ir 03_security.sql
+
+\echo '>> 06_login_security.sql'
+\ir 06_login_security.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
 

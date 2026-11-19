@@ -127,11 +127,11 @@ GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment" TO medbase_alert_service;
 GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_alert_service;
 GRANT SELECT ("PatientID", "WardID", "Status") ON "Admission" TO medbase_alert_service;
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_alert_service;
--- Who was already called for an alert, so nobody is called twice (decisions.md, record 10)
+-- Who was already called for an alert, so nobody is called twice (decisions.md, record 12)
 GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR, VARCHAR) TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) TO medbase_alert_service;
 
--- Login: only the backend checks badge + PIN; nobody reads PIN hashes
+-- Private verifier; 06_login_security.sql grants only the throttled entry point.
 REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) TO medbase_api;
+REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM medbase_api;

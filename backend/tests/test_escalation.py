@@ -212,7 +212,7 @@ def test_repeat_escalation_without_free_nurse_calls_a_busy_one(client):
     assert escalate(client)["ALT-1003"] == "NURSE-02"
 
 
-# --- Nobody free left (decisions.md, record 10) ----------------------------------------------
+# --- Nobody free left (decisions.md, record 12) ----------------------------------------------
 # An emergency must not stay unheard while somebody is on shift,
 # and must not bounce between two nurses who do not answer.
 
