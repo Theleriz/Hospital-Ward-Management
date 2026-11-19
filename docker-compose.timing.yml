@@ -1,0 +1,45 @@
+# Disposable real system for T-29: no host ports or shared application volume.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: medbase
+      POSTGRES_PASSWORD: medbase
+      POSTGRES_DB: hospital_ward
+    volumes:
+      - ./db:/db:ro
+      - ./db/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U medbase -d hospital_ward']
+      interval: 2s
+      retries: 30
+  backend:
+    build: ./backend
+    environment:
+      MEDBASE_DATABASE_URL: postgresql://medbase_api:medbase_api@db:5432/hospital_ward
+      MEDBASE_ESCALATION_ENABLED: 'true'
+      MEDBASE_ESCALATION_INTERVAL_SECONDS: '2'
+      MEDBASE_SIMULATOR_ENABLED: 'true'
+      MEDBASE_SESSION_SECRET: isolated-timing-run-only
+    depends_on:
+      db:
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+  timing:
+    build:
+      context: ./scripts/timing
+    init: true
+    shm_size: 1gb
+    environment:
+      PYTHONUNBUFFERED: '1'
+      MEDBASE_TIMING_URL: http://frontend
+      MEDBASE_TIMING_ADMIN_URL: postgresql://medbase:medbase@db:5432/hospital_ward
+      MEDBASE_COMMIT: ${MEDBASE_COMMIT:-unknown}
+      MEDBASE_SOURCE_DIRTY: ${MEDBASE_SOURCE_DIRTY:-unknown}
+    volumes:
+      - ./artifacts/alert-timing:/results
+    command: [python, /checks/measure.py]
