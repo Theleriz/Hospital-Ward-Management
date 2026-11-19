@@ -4,8 +4,7 @@ This is the primary access-control layer; the database re-checks every request
 through the user's database role (decisions.md, record 5).
 """
 
-import threading
-import time
+from dataclasses import dataclass
 from collections.abc import Callable, Iterator
 from enum import StrEnum
 
@@ -43,57 +42,26 @@ class User(BaseModel):
 SESSION_KEY = "user"
 
 
-def authenticate(conn: Connection, badge_id: str, pin: str) -> User | None:
-    """Account for the badge if the PIN is right (checked inside the database)."""
+@dataclass(frozen=True)
+class LoginResult:
+    user: User | None
+    retry_after: int = 0
+
+
+def authenticate(conn: Connection, badge_id: str, pin: str) -> LoginResult:
+    """Atomic DB throttle and bcrypt check. The caller commits before HTTP errors."""
     row = conn.execute(
-        'SELECT "AccountID", "FullName", "Role" FROM fn_AuthenticateStaff(%s, %s)',
-        (badge_id, pin),
+        'SELECT "Outcome", "RetryAfter", "AccountID", "FullName", "Role" '
+        'FROM fn_LoginStaff(%s, %s, %s, %s)',
+        (badge_id, pin, settings.login_max_failures, settings.login_lockout_seconds),
     ).fetchone()
-    if row is None:
-        return None
-    return User(account_id=row[0], full_name=row[1], role=Role(row[2]))
-
-
-class LoginThrottle:
-    """Locks a badge for a while after too many wrong PINs.
-
-    Kept in memory of the backend process: enough for one ward installation.
-    """
-
-    def __init__(self, max_failures: int, lockout_seconds: int):
-        self.max_failures = max_failures
-        self.lockout_seconds = lockout_seconds
-        self._failures: dict[str, int] = {}
-        self._locked_until: dict[str, float] = {}
-        self._lock = threading.Lock()
-
-    def seconds_locked(self, badge_id: str) -> int:
-        with self._lock:
-            remaining = self._locked_until.get(badge_id, 0) - time.monotonic()
-            if remaining <= 0:
-                self._locked_until.pop(badge_id, None)
-                return 0
-            return int(remaining) + 1
-
-    def record_failure(self, badge_id: str) -> None:
-        with self._lock:
-            failures = self._failures.get(badge_id, 0) + 1
-            if failures >= self.max_failures:
-                self._locked_until[badge_id] = time.monotonic() + self.lockout_seconds
-                failures = 0
-            self._failures[badge_id] = failures
-
-    def record_success(self, badge_id: str) -> None:
-        with self._lock:
-            self._failures.pop(badge_id, None)
-
-    def reset(self) -> None:
-        with self._lock:
-            self._failures.clear()
-            self._locked_until.clear()
-
-
-login_throttle = LoginThrottle(settings.login_max_failures, settings.login_lockout_seconds)
+    if row and row[0] == 'OK':
+        return LoginResult(User(account_id=row[2], full_name=row[3], role=Role(row[4])))
+    if row and row[0] == 'LOCKED':
+        return LoginResult(None, retry_after=row[1])
+    if row and row[0] == 'INVALID':
+        return LoginResult(None)
+    raise RuntimeError('Unexpected database login result')
 
 
 def current_user(request: Request) -> User:

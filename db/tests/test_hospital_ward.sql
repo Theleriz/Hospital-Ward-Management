@@ -715,7 +715,43 @@ CALL pg_temp.expect_error('login function is not available to user roles',
     'permission denied%', 'medbase_public_staff');
 
 CALL pg_temp.expect_ok('backend role can run the login function',
-    $q$ SELECT * FROM fn_AuthenticateStaff('BADGE-1001', '1111') $q$, 'medbase_api');
+    $q$ SELECT * FROM fn_LoginStaff('BADGE-1001', '1111', 5, 300) $q$, 'medbase_api');
+
+CALL pg_temp.expect_error('backend cannot bypass the persistent login throttle',
+    $q$ SELECT * FROM fn_AuthenticateStaff('BADGE-1001', '1111') $q$,
+    'permission denied%', 'medbase_api');
+
+CALL pg_temp.expect_error('backend cannot clear persistent login state directly',
+    $q$ DELETE FROM "LoginThrottle" $q$, 'permission denied%', 'medbase_api');
+
+CALL pg_temp.expect_error('user role cannot read persistent login state',
+    $q$ SELECT * FROM "LoginThrottle" $q$, 'permission denied%', 'medbase_head_nurse');
+
+CALL pg_temp.expect_error('user role cannot invoke the login entry point',
+    $q$ SELECT * FROM fn_LoginStaff('BADGE-1001', '1111', 5, 300) $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_true('throttled login does not reveal unknown badges', $q$
+    SELECT "Outcome" = 'INVALID' AND "AccountID" IS NULL
+    FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300) $q$);
+
+DO $$ BEGIN
+    FOR i IN 1..4 LOOP
+        PERFORM * FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300);
+    END LOOP;
+END $$;
+
+CALL pg_temp.expect_true('five failures persist and block subsequent requests', $q$
+    SELECT "Outcome" = 'LOCKED' AND "RetryAfter" BETWEEN 1 AND 300
+        AND "AccountID" IS NULL FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300) $q$);
+
+UPDATE "LoginThrottle" SET "LockedUntil" = clock_timestamp() - INTERVAL '1 second'
+    WHERE "BadgeID" = 'UNKNOWN-SQL';
+CALL pg_temp.expect_true('expired lock starts a fresh failure count', $q$
+    SELECT "Outcome" = 'INVALID' FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300) $q$);
+CALL pg_temp.expect_true('expired state is cleared in the database', $q$
+    SELECT "Failures" = 1 AND "LockedUntil" IS NULL FROM "LoginThrottle"
+    WHERE "BadgeID" = 'UNKNOWN-SQL' $q$);
 
 CALL pg_temp.expect_error('backend role on its own cannot read patients',
     $q$ SELECT * FROM "Patient" $q$, 'permission denied%', 'medbase_api');

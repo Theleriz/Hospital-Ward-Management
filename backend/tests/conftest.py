@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 # set before the app reads its settings
 os.environ["MEDBASE_ESCALATION_ENABLED"] = "false"
 
-from app.auth import login_throttle  # noqa: E402
 from app.main import app  # noqa: E402
 
 # Test accounts from db/04_seed.sql
@@ -32,7 +31,9 @@ ADMIN_URL = os.environ.get(
 
 @pytest.fixture
 def client():
-    login_throttle.reset()
+    # Tests only: persistent login state must not leak between test cases.
+    with psycopg.connect(ADMIN_URL, autocommit=True) as conn:
+        conn.execute('TRUNCATE TABLE "LoginThrottle"')
     # The context manager runs the lifespan, so the connection pool is opened
     with TestClient(app) as test_client:
         yield test_client

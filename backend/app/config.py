@@ -1,6 +1,7 @@
 """Backend settings, read from environment variables (MEDBASE_*)."""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -20,8 +21,8 @@ class Settings(BaseSettings):
     session_https_only: bool = False
 
     # Brute-force protection for 4-digit PINs
-    login_max_failures: int = 5
-    login_lockout_seconds: int = 5 * 60
+    login_max_failures: int = Field(default=5, ge=1, le=1000)
+    login_lockout_seconds: int = Field(default=5 * 60, ge=1, le=86400)
 
     # Background escalation of overdue HIGH/CRITICAL alerts (UC-7)
     escalation_enabled: bool = True
