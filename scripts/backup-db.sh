@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
+# =============================================================================
+# Hospital Ward Management System (Team MedBase)
+# Backup of the database with pg_dump (T-44).
+# The dump holds patient data and bcrypt hashes of PINs: the file and a new
+# backup folder are readable by the current user only (umask 077).
+# Cluster roles are not in the dump: scripts/restore-db.sh creates them first.
+# Run from the repository root:  bash scripts/backup-db.sh [folder]
+# =============================================================================
 set -euo pipefail
+
+# Nobody but the current user may read the dump or list the folder
+umask 077
 
 CONTAINER_NAME="${MEDBASE_DB_CONTAINER:-medbase-postgres}"
 DB_USER="${MEDBASE_DB_USER:-medbase}"
@@ -15,9 +26,15 @@ fi
 
 mkdir -p "${BACKUP_DIR}"
 
-docker exec "${CONTAINER_NAME}" pg_dump -U "${DB_USER}" -d "${DB_NAME}" > "${BACKUP_FILE}"
+# A failed pg_dump must not leave a half-written file that looks like a backup
+if ! docker exec "${CONTAINER_NAME}" pg_dump -U "${DB_USER}" -d "${DB_NAME}" > "${BACKUP_FILE}"; then
+  rm -f "${BACKUP_FILE}"
+  echo "ERROR: pg_dump завершился с ошибкой" >&2
+  exit 1
+fi
 
 if [ ! -s "${BACKUP_FILE}" ]; then
+  rm -f "${BACKUP_FILE}"
   echo "ERROR: файл бэкапа пустой: ${BACKUP_FILE}" >&2
   exit 1
 fi
