@@ -30,6 +30,9 @@ jobs:
       - name: Check database is demo-ready
         run: bash scripts/check-db.sh
 
+      - name: Check backup and restore (T-44)
+        run: bash scripts/check-backup.sh
+
       - name: Database logs
         if: failure()
         run: docker logs medbase-postgres

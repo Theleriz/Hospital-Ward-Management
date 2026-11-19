@@ -9,3 +9,7 @@ artifacts/
 # Node
 node_modules/
 dist/
+
+# Database backups
+backups/
+*.dump
