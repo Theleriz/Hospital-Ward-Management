@@ -4,10 +4,10 @@
 
 **Project:** Hospital Ward Management System  
 **Team:** Team MedBase  
-**Task:** T-03 — Functional and Non-Functional Requirements  
+**Task:** T-03 / T-35 — Requirements and Escalation Update
 **Responsible:** Bauyrzhanuly Kuanyshbek  
-**Status:** Requirements baseline for MVP  
-**Version:** 1.0
+**Status:** Updated requirements — pending review
+**Version:** 1.1
 
 ---
 
@@ -127,13 +127,17 @@ Each functional requirement describes a specific behavior of the system.
 
 ### UC-7 — Alert Escalation
 
-**FR-24:** The system shall escalate an unacknowledged HIGH or CRITICAL alert to another Available nurse no earlier than 30 seconds and no later than 35 seconds after alert creation.
+**FR-24:** The system shall escalate an unacknowledged HIGH or CRITICAL alert after 30 seconds, with a maximum additional processing delay of 5 seconds. The system shall first select an Available nurse assigned to the same ward, then an Available nurse working on the same floor, and finally another Available nurse from the department. The original assigned nurse and the current escalation recipient shall not be selected as the next escalation recipient.
 
 **FR-25:** The system shall not automatically escalate LOW-priority alerts.
 
 **FR-26:** The system shall record the escalation recipient and timestamp.
 
 **FR-27:** The system shall prevent escalation to a nurse whose status is Busy or OffShift.
+
+**Additional escalation requirement (T-35):**
+
+**FR-32:** If a HIGH or CRITICAL alert remains unacknowledged for 30 seconds after its previous escalation, the system shall attempt another escalation to a different Available nurse, following the same ward, same floor, and other ward selection order. If no eligible nurse is available, the system shall keep the alert open.
 
 ### UC-8 — Head Nurse Reporting
 
@@ -170,7 +174,7 @@ Each functional requirement describes a specific behavior of the system.
 
 **BR-04 — Alert Priority:** The system shall accept only LOW, HIGH, and CRITICAL alert priorities.
 
-**BR-05 — Alert Escalation:** Only unacknowledged HIGH and CRITICAL alerts qualify for automatic escalation after 30 seconds.
+**BR-05 — Alert Escalation:** Only unacknowledged HIGH and CRITICAL alerts qualify for automatic escalation. The first escalation shall occur after 30 seconds without acknowledgement. If the alert remains unacknowledged, the system shall attempt another escalation 30 seconds after the previous escalation. Eligible recipients shall be selected in this order: an Available nurse from the same ward, then the same floor, then another ward. The original assigned nurse and the current escalation recipient shall be excluded.
 
 **BR-06 — Nurse Availability:** Escalation recipients must have Available status.
 
@@ -223,8 +227,67 @@ Each functional requirement describes a specific behavior of the system.
 | UC-4 | FR-11–FR-13 | NFR-03, BR-07 | Occupancy calculation and restricted-access tests. |
 | UC-5 | FR-14–FR-18 | NFR-01, BR-04 | Simulator alert creation, priority, display-time and sound tests. |
 | UC-6 | FR-19–FR-23 | BR-07, BR-09, BR-10 | Authentication, access, acknowledgement and nurse-status tests. |
-| UC-7 | FR-24–FR-27 | NFR-02, BR-05, BR-06 | Escalation timing, LOW-priority and unavailable-nurse tests. |
+| UC-7 | FR-24–FR-27, FR-32 | NFR-02, BR-05, BR-06 | First and repeat escalation, same-floor preference, timing, LOW-priority and unavailable-nurse tests. |
 | UC-8 | FR-28–FR-31 | NFR-04, BR-08 | Response-time, escalation-count, audit-log and access tests. |
+
+
+### UC-1 to UC-4 — Detailed Test Traceability (T-35)
+
+| Requirement | Test file | Test function | Coverage |
+|---|---|---|---|
+| FR-01 | `backend/tests/test_admissions.py` | `test_admit_new_patient`, `test_admit_rejects_invalid_input` | Partial |
+| FR-02 | `backend/tests/test_admissions.py` | `test_admit_new_patient` | Covered |
+| FR-03 | `backend/tests/test_admissions.py` | `test_admit_to_full_ward_is_refused` | Covered |
+| FR-04 | `backend/tests/test_admissions.py` | `test_admit_already_admitted_patient_asks_for_transfer` | Covered |
+| FR-05 | `backend/tests/test_admissions.py` | `test_transfer_to_another_ward` | Covered |
+| FR-06 | `backend/tests/test_admissions.py` | `test_patient_admission_transfer_discharge_lifecycle` | Partial |
+| FR-07 | `backend/tests/test_admissions.py` | `test_transfer_to_full_ward_is_refused` | Partial |
+| FR-08 | `backend/tests/test_admissions.py` | `test_discharge` | Covered |
+| FR-09 | `backend/tests/test_admissions.py` | `test_discharge` | Partial |
+| FR-10 | `backend/tests/test_admissions.py` | `test_discharge_of_patient_not_admitted` | Covered |
+| FR-11 | `backend/tests/test_admissions.py` | `test_every_role_sees_the_ward_board` | Covered |
+| FR-12 | `backend/tests/test_admissions.py` | `test_patient_admission_transfer_discharge_lifecycle` | Covered |
+| FR-13 | `backend/tests/test_admissions.py` | `test_ward_board_has_no_patient_data` | Covered |
+
+
+### UC-5 and UC-6 — Detailed Test Traceability (T-35)
+
+| Requirement | Test file | Test function | Coverage |
+|---|---|---|---|
+| FR-14 | `backend/tests/test_alerts.py` | `test_simulated_alert_reaches_the_ward_nurse` | Covered |
+| FR-15 | `backend/tests/test_escalation.py` | `test_only_high_and_critical_alerts_are_escalated` | Partial |
+| FR-16 | `backend/tests/test_alerts.py` | `test_simulated_alert_reaches_the_ward_nurse` | Covered |
+| FR-17 | `backend/tests/test_alerts.py` | `test_nurse_sees_alerts_of_own_wards` | Partial |
+| FR-18 | Manual UI test | Audible notification for HIGH and CRITICAL alerts | Not Covered |
+| FR-19 | `backend/tests/test_auth.py` | `test_login_with_badge_and_pin` | Covered |
+| FR-20 | `backend/tests/test_auth.py` | `test_login_rejected_with_the_same_message` | Covered |
+| FR-21 | `backend/tests/test_alerts.py` | `test_acknowledge`, `test_escalation_target_can_acknowledge` | Covered |
+| FR-22 | `backend/tests/test_alerts.py` | `test_acknowledge` | Partial |
+| FR-23 | `backend/tests/test_alerts.py` | `test_nurse_changes_status` | Covered |
+
+
+### UC-7 — Detailed Test Traceability (T-35)
+
+| Requirement | Test file | Test function | Coverage |
+|---|---|---|---|
+| FR-24 | `backend/tests/test_escalation.py` | `test_escalation_starts_after_30_seconds` | Partial |
+| FR-24 | `backend/tests/test_escalation.py` | `test_escalation_prefers_a_nurse_on_the_same_floor` | Covered |
+| FR-24 | `backend/tests/test_escalation.py` | `test_nurse_of_another_floor_gets_the_alert_when_the_floor_is_busy` | Covered |
+| FR-25 | `backend/tests/test_escalation.py` | `test_only_high_and_critical_alerts_are_escalated` | Covered |
+| FR-26 | `backend/tests/test_escalation.py` | `test_escalation_is_written_to_the_journal` | Covered |
+| FR-27 | `backend/tests/test_escalation.py` | `test_busy_and_off_shift_nurses_never_receive_an_escalation` | Covered |
+| FR-32 | `backend/tests/test_escalation.py` | `test_escalated_alert_without_answer_goes_to_the_next_nurse` | Covered |
+| FR-32 | `backend/tests/test_escalation.py` | `test_escalated_alert_is_not_escalated_again_within_30_seconds` | Covered |
+| FR-32 | `backend/tests/test_escalation.py` | `test_repeat_escalation_needs_another_free_nurse` | Covered |
+
+### UC-8 — Detailed Test Traceability (T-35)
+
+| Requirement | Test file | Test function | Coverage |
+|---|---|---|---|
+| FR-28 | `backend/tests/test_reports.py` | `test_history_is_newest_first_with_response_time` | Covered |
+| FR-29 | `backend/tests/test_reports.py` | `test_summary_counts_and_response_times`, `test_history_is_newest_first_with_response_time` | Covered |
+| FR-30 | `backend/tests/test_reports.py` | `test_summary_counts_and_response_times` | Covered |
+| FR-31 | `backend/tests/test_reports.py` | `test_only_head_nurse_sees_the_report`, `test_report_requires_login` | Covered |
 
 ---
 
@@ -241,7 +304,7 @@ Each functional requirement describes a specific behavior of the system.
 ## 9. References
 
 - `docs/project-plan.md` — project vision, use cases, scope, responsibilities, and milestones.
-- `docs/decisions.md` — technical decisions 1–7.
+- `docs/decisions.md` — technical decisions, including same-floor and repeat escalation (record 9).
 - `db/01_schema.sql` — database constraints and validation rules.
 - `db/02_procedures.sql` — database business operations.
 - `db/tests/test_hospital_ward.sql` — database verification tests.
