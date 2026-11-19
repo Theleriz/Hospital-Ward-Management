@@ -235,12 +235,13 @@ $$;
 -- Procedure 5: sp_EscalateAlert
 -- Business Logic: forwarding an unacknowledged alert to another nurse (UC-7)
 -- The backend finds overdue alerts and picks the nurse; the procedure re-checks
--- the escalation rules (decisions.md, records 1, 5 and 9):
--- only HIGH/CRITICAL alerts that are not acknowledged, to an Available nurse:
+-- the escalation rules (decisions.md, records 1, 5, 9 and 12):
+-- only HIGH/CRITICAL alerts that are not acknowledged, to a nurse on shift:
 --   PENDING   -> at least 30 seconds after creation;
---   ESCALATED -> at least 30 seconds after the last escalation (repeat escalation),
---                never to the nurse it is already escalated to.
--- The assigned nurse never receives the alert back.
+--   ESCALATED -> at least 30 seconds after the last escalation (repeat escalation).
+-- The assigned nurse never receives the alert back, and a nurse who was already
+-- called for this alert is not called again (no ping-pong between two nurses).
+-- A Busy nurse is called only when no Available nurse is left to call.
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE sp_EscalateAlert(
     p_AlertID VARCHAR,
@@ -255,6 +256,7 @@ DECLARE
     v_NurseStatus VARCHAR(20);
     v_AgeSeconds INT;
     v_WaitSeconds INT;
+    v_FreeNurseID VARCHAR(20);
 BEGIN
     -- 1. Verify Alert existence (lock it so a parallel acknowledgement waits)
     SELECT * INTO v_Alert FROM "WardAlert" WHERE "AlertID" = p_AlertID FOR UPDATE;
@@ -285,15 +287,15 @@ BEGIN
         END IF;
     END IF;
 
-    -- 3. Target nurse must exist, be Available and differ from the assigned nurse
+    -- 3. Target nurse must exist, be on shift and not be called for this alert before
     SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_ToNurseID;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Nurse % does not exist.', p_ToNurseID;
     END IF;
 
-    IF v_NurseStatus <> 'Available' THEN
-        RAISE EXCEPTION 'Nurse % is not Available (status %).', p_ToNurseID, v_NurseStatus;
+    IF v_NurseStatus = 'OffShift' THEN
+        RAISE EXCEPTION 'Nurse % is not Available (status OffShift).', p_ToNurseID;
     END IF;
 
     IF p_ToNurseID = v_Alert."AssignedNurseID" THEN
@@ -302,6 +304,29 @@ BEGIN
 
     IF p_ToNurseID = v_Alert."EscalatedToNurseID" THEN
         RAISE EXCEPTION 'Alert % is already escalated to nurse %.', p_AlertID, p_ToNurseID;
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM "AlertEvent"
+               WHERE "AlertID" = p_AlertID AND "EventType" = 'ESCALATED' AND "NurseID" = p_ToNurseID) THEN
+        RAISE EXCEPTION 'Nurse % was already called for alert % and did not answer.', p_ToNurseID, p_AlertID;
+    END IF;
+
+    -- A Busy nurse only when nobody Available is left to call (decisions.md, record 12)
+    IF v_NurseStatus = 'Busy' THEN
+        SELECT n."NurseID" INTO v_FreeNurseID
+        FROM "Nurse" n
+        WHERE n."Status" = 'Available'
+          AND n."NurseID" IS DISTINCT FROM v_Alert."AssignedNurseID"
+          AND NOT EXISTS (SELECT 1 FROM "AlertEvent" e
+                          WHERE e."AlertID" = p_AlertID AND e."EventType" = 'ESCALATED'
+                            AND e."NurseID" = n."NurseID")
+        ORDER BY n."NurseID"
+        LIMIT 1;
+
+        IF FOUND THEN
+            RAISE EXCEPTION 'Nurse % is not Available (status Busy) while nurse % is Available.',
+                p_ToNurseID, v_FreeNurseID;
+        END IF;
     END IF;
 
     -- 4. Escalate (the trigger logs ESCALATED, once per escalation)
