@@ -446,6 +446,33 @@ CALL pg_temp.expect_error('repeat escalation: again within 30 s is rejected', $q
     CALL sp_EscalateAlert('ALT-1003', 'NURSE-03') $q$,
     'Alert ID ALT-1003 was escalated % s ago (next escalation after 30 s)%');
 
+-- Nobody free left (decisions.md, record 10): ALT-1003 was called to NURSE-03 and NURSE-04,
+-- NURSE-04 has not answered for a minute either
+CALL pg_temp.expect_ok('make the escalation of ALT-1003 to NURSE-04 1 minute old', $q$
+    UPDATE "WardAlert" SET "EscalatedAt" = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+    WHERE "AlertID" = 'ALT-1003' $q$);
+
+CALL pg_temp.expect_error('repeat escalation: a nurse who was already called is not called again', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-03') $q$,
+    'Nurse NURSE-03 was already called for alert ALT-1003%');
+
+CALL pg_temp.expect_error('repeat escalation: Busy nurse is rejected while someone is Available', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-02') $q$,
+    'Nurse NURSE-02 is not Available (status Busy) while nurse NURSE-10 is Available%');
+
+CALL pg_temp.expect_ok('the last Available nurse (head nurse NURSE-10) becomes Busy', $q$
+    UPDATE "Nurse" SET "Status" = 'Busy' WHERE "NurseID" = 'NURSE-10' $q$);
+
+CALL pg_temp.expect_ok('repeat escalation: Busy NURSE-02 is called when nobody is Available', $q$
+    CALL sp_EscalateAlert('ALT-1003', 'NURSE-02') $q$);
+
+CALL pg_temp.expect_true('ALT-1003 journal has three escalations, nobody twice', $q$
+    SELECT array_agg("NurseID"::TEXT ORDER BY "EventID") = ARRAY['NURSE-03', 'NURSE-04', 'NURSE-02']
+    FROM "AlertEvent" WHERE "AlertID" = 'ALT-1003' AND "EventType" = 'ESCALATED' $q$);
+
+CALL pg_temp.expect_ok('head nurse NURSE-10 is Available again', $q$
+    UPDATE "Nurse" SET "Status" = 'Available' WHERE "NurseID" = 'NURSE-10' $q$);
+
 -- -----------------------------------------------------------------------------
 -- 7. sp_AcknowledgeAlert
 -- -----------------------------------------------------------------------------
@@ -653,6 +680,12 @@ CALL pg_temp.expect_ok('make unassigned ALT-1008 1 minute old', $q$
 
 CALL pg_temp.expect_ok('alert service can escalate overdue alerts',
     $q$ CALL sp_EscalateAlert('ALT-1008', 'NURSE-04') $q$, 'medbase_alert_service');
+
+CALL pg_temp.expect_ok('alert service can read who was already called for an alert',
+    $q$ SELECT "AlertID", "EventType", "NurseID" FROM "AlertEvent" $q$, 'medbase_alert_service');
+
+CALL pg_temp.expect_error('alert service cannot change the alert journal',
+    $q$ DELETE FROM "AlertEvent" WHERE "AlertID" = 'ALT-1008' $q$, 'permission denied%', 'medbase_alert_service');
 
 CALL pg_temp.expect_error('alert service cannot acknowledge alerts',
     $q$ CALL sp_AcknowledgeAlert('ALT-1008', 'NURSE-04') $q$, 'permission denied%', 'medbase_alert_service');

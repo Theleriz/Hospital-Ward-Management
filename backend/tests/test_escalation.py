@@ -124,8 +124,8 @@ def test_nurse_of_the_ward_who_becomes_free_is_preferred(client):
 
 
 def test_alert_never_goes_back_to_the_assigned_nurse(client):
-    # NURSE-01 (assigned to ALT-1001) is the only free nurse
-    set_status(["NURSE-03", "NURSE-04", "NURSE-10"], "Busy")
+    # NURSE-01 (assigned to ALT-1001) is the only nurse on shift
+    set_status(["NURSE-02", "NURSE-03", "NURSE-04", "NURSE-10"], "OffShift")
 
     assert "ALT-1001" not in escalate(client)
     assert fetch_all('SELECT "Status" FROM "WardAlert" WHERE "AlertID" = %s', ("ALT-1001",)) == [("PENDING",)]
@@ -204,11 +204,94 @@ def test_escalated_alert_is_not_escalated_again_within_30_seconds(client):
     assert alert["alert_id"] not in escalate(client)
 
 
-def test_repeat_escalation_needs_another_free_nurse(client):
-    # ALT-1003: assigned NURSE-01, escalated to NURSE-03; nobody else is free
+def test_repeat_escalation_without_free_nurse_calls_a_busy_one(client):
+    # ALT-1003: assigned NURSE-01, escalated to NURSE-03; nobody else is free.
+    # NURSE-02 is Busy, but works in ward 101 and is on duty
     set_status(["NURSE-04", "NURSE-10"], "Busy")
 
-    assert "ALT-1003" not in escalate(client)
+    assert escalate(client)["ALT-1003"] == "NURSE-02"
+
+
+# --- Nobody free left (decisions.md, record 10) ----------------------------------------------
+# An emergency must not stay unheard while somebody is on shift,
+# and must not bounce between two nurses who do not answer.
+
+def age_escalation(alert_id: str, seconds: int = 40) -> None:
+    """The nurse the alert was escalated to has not answered for `seconds`."""
+    run_as_owner(
+        """UPDATE "WardAlert" SET "EscalatedAt" = CURRENT_TIMESTAMP - make_interval(secs => %s)
+           WHERE "AlertID" = %s""",
+        (seconds, alert_id),
+    )
+
+
+def test_busy_nurse_of_the_ward_is_called_when_nobody_is_free(client):
+    set_status(["NURSE-03", "NURSE-04", "NURSE-10"], "Busy")
+
+    # NURSE-02 is Busy, but works in ward 101
+    assert escalate(client)["ALT-1001"] == "NURSE-02"
+
+
+def test_busy_nurse_of_the_same_floor_goes_before_another_floor(client):
+    set_status(["NURSE-03", "NURSE-04", "NURSE-10"], "Busy")
+    set_status(["NURSE-02"], "OffShift")
+
+    # Ward 101 is on floor 1: NURSE-04 (floor 1) before NURSE-03 (floor 2) and the head nurse
+    assert escalate(client)["ALT-1001"] == "NURSE-04"
+
+
+def test_free_head_nurse_goes_before_busy_nurses(client):
+    set_status(["NURSE-03", "NURSE-04"], "Busy")
+
+    assert escalate(client)["ALT-1001"] == "NURSE-10"
+
+
+def test_busy_head_nurse_goes_before_busy_nurses_of_another_floor(client):
+    set_status(["NURSE-03", "NURSE-10"], "Busy")
+    set_status(["NURSE-02", "NURSE-04"], "OffShift")
+
+    assert escalate(client)["ALT-1001"] == "NURSE-10"
+
+
+def test_off_shift_nurse_is_never_called_even_when_nobody_else_is_left(client):
+    set_status(["NURSE-02", "NURSE-03", "NURSE-04", "NURSE-10"], "OffShift")
+
+    assert "ALT-1001" not in escalate(client)
+
+
+def test_escalation_chain_calls_everyone_on_shift_once(client):
+    # Free: NURSE-03, NURSE-04. Busy: NURSE-02 (ward 101), NURSE-10 (head nurse).
+    # NURSE-01 is assigned, NURSE-05 is off shift.
+    set_status(["NURSE-10"], "Busy")
+    alert = raise_alert(client, NURSE)
+    make_old(alert["alert_id"], 600)
+
+    chain = []
+    while (nurse := escalate(client).get(alert["alert_id"])) is not None:
+        chain.append(nurse)
+        age_escalation(alert["alert_id"])
+        assert len(chain) <= 10, "the alert bounces between nurses"
+
+    # Free nurses (same floor first), then the Busy one of the ward, then the head nurse;
+    # nobody is called twice
+    assert chain == ["NURSE-04", "NURSE-03", "NURSE-02", "NURSE-10"]
+    assert [n for e, n in journal(alert["alert_id"]) if e == "ESCALATED"] == chain
+    # Every nurse on shift was called: the alert stays with the last one (and on the head nurse's board)
     assert fetch_all(
-        'SELECT "Status", "EscalatedToNurseID" FROM "WardAlert" WHERE "AlertID" = %s', ("ALT-1003",)
-    ) == [("ESCALATED", "NURSE-03")]
+        'SELECT "Status", "EscalatedToNurseID" FROM "WardAlert" WHERE "AlertID" = %s', (alert["alert_id"],)
+    ) == [("ESCALATED", "NURSE-10")]
+
+
+def test_acknowledgement_stops_the_chain(client):
+    alert = raise_alert(client, NURSE)
+    make_old(alert["alert_id"], 600)
+    escalate(client)
+    age_escalation(alert["alert_id"])
+    escalate(client)
+
+    # The assigned nurse of the ward answers in the end
+    login(client, NURSE)
+    assert client.post(f"/api/alerts/{alert['alert_id']}/acknowledge").status_code == 200
+    age_escalation(alert["alert_id"])
+
+    assert alert["alert_id"] not in escalate(client)
