@@ -130,6 +130,6 @@ GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR, VARCHAR) TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) TO medbase_alert_service;
 
--- Login: only the backend checks badge + PIN; nobody reads PIN hashes
+-- Private verifier; 06_login_security.sql grants only the throttled entry point.
 REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) TO medbase_api;
+REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM medbase_api;
