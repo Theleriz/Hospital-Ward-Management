@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import News2Simulator from "./News2Simulator";
 
 import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
 
@@ -17,6 +18,8 @@ const PRIORITIES: { value: Priority; hint: string }[] = [
 
 /** Demo stand-in for patient monitors and call buttons (T-26). */
 export default function SimulatorPage() {
+  const [mode, setMode] = useState<"MANUAL" | "NEWS2">("MANUAL");
+  const [news2Busy, setNews2Busy] = useState(false);
   const [wards, setWards] = useState<SimulatorWard[]>([]);
   const [wardId, setWardId] = useState("");
   const [patientId, setPatientId] = useState("");
@@ -69,8 +72,35 @@ export default function SimulatorPage() {
     }
   }
 
+  const modeControls = (
+    <fieldset className="card choice-field">
+      <legend>Режим симулятора</legend>
+      <div className="choice-group choice-group-2" role="radiogroup" aria-label="Режим симулятора">
+        <button type="button" role="radio" aria-checked={mode === "MANUAL"} disabled={busy || news2Busy}
+          className={mode === "MANUAL" ? "choice choice-active" : "choice"}
+          onClick={() => { setMode("MANUAL"); setNotice(null); }}>
+          Ручной сценарий<span>существующий симулятор с выбранным приоритетом</span>
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "NEWS2"} disabled={busy || news2Busy}
+          className={mode === "NEWS2" ? "choice choice-active" : "choice"}
+          onClick={() => { setMode("NEWS2"); setNotice(null); }}>
+          NEWS2 по показателям<span>сервер рассчитывает баллы и приоритет</span>
+        </button>
+      </div>
+    </fieldset>
+  );
+
+  if (mode === "NEWS2") {
+    return <div className="stack">
+      {modeControls}
+      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
+      <News2Simulator wards={wards} onBusyChange={setNews2Busy} />
+    </div>;
+  }
+
   return (
     <div className="stack">
+      {modeControls}
       {notice && (
         <p className={`notice notice-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
           {notice.text}
@@ -162,12 +192,12 @@ export default function SimulatorPage() {
           <h2>Как это работает</h2>
           <p className="hint">
             Только для демонстрации: экран заменяет монитор пациента и кнопку вызова. Оповещение появляется на посту
-            медсестры палаты за секунду.
+            медсестры палаты при обновлении списка.
           </p>
           <ul className="legend">
             <li>
               <span className="priority priority-CRITICAL">Critical</span>
-              <span>звук на посту; без подтверждения через 30 с уходит свободной медсестре</span>
+              <span>звук на посту; через 30 с без подтверждения — эскалация по правилам отделения</span>
             </li>
             <li>
               <span className="priority priority-HIGH">High</span>
