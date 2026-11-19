@@ -85,6 +85,9 @@ GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_nur
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) TO medbase_nurse;
+-- A nurse who was called for an alert keeps seeing it after the next escalation
+-- (decisions.md, record 13): only who was called, not the full journal with times
+GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_nurse;
 
 -- Head nurse: the response-time report and the full alert journal (UC-8, FR-31);
 -- ward nurses do not get them
