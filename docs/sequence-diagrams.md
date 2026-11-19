@@ -2,7 +2,7 @@
 
 Автор: Shynbulat Kazbek (24B032123, Kazbekio), Architecture & Security.
 
-Срез: `main` от 12 ноября 2026, базовый коммит `a8ffc3f` (UC-1 — UC-7).
+Срез: `main 29d4780` от 18 ноября 2026 (UC-1 — UC-8, повторная эскалация).
 
 Каждая вертикальная линия — участник процесса. Стрелки читаются сверху вниз:
 вызов → проверка → изменение данных → ответ. `alt` показывает варианты,
@@ -285,7 +285,42 @@ sequenceDiagram
 (решение 9); назначенной медсестре оно не возвращается. Если нет Available,
 доставку в пределах 35 секунд гарантировать нельзя: система повторяет поиск.
 
-## 7. Связь диаграмм с проверками и направлением разработки
+## 7. Отчёт старшей медсестры (UC-8)
+
+Реализовано: `ReportPage.tsx`, `routers/reports.py`, `vw_AlertResponse`,
+`AlertEvent`, роль `medbase_head_nurse`. FR-28 — FR-31.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Head as Старшая медсестра
+    participant UI as ReportPage
+    participant API as FastAPI reports
+    participant DB as PostgreSQL
+    Head->>UI: Выбирает период отчёта
+    UI->>API: GET /api/reports/alerts?hours=N
+    alt Нет сессии или роль не HeadNurse
+        API-->>UI: 401 или 403
+    else Разрешённая роль
+        API->>DB: BEGIN, SET LOCAL ROLE medbase_head_nurse
+        DB->>DB: Проверить GRANT на vw_AlertResponse
+        API->>DB: Сводка, приоритеты, медсёстры, последние 500 записей
+        DB-->>API: Реакция = подтверждение минус создание
+        API->>DB: COMMIT
+        API-->>UI: Отчёт без идентификаторов и имён пациентов
+        Head->>UI: Открывает историю оповещения
+        UI->>API: GET /api/reports/alerts/alert_id/events
+        API->>DB: medbase_head_nurse читает AlertEvent
+        DB-->>API: Создание, назначение, все эскалации, подтверждение
+        API-->>UI: Хронология событий
+    end
+```
+
+**Что проверяем:** отчёт только читает данные. Обычная медсестра не может
+прочитать отчёт или журнал ни через API, ни непосредственно под своей ролью
+PostgreSQL. Сводка считает весь период, история ограничена 500 записями.
+
+## 8. Связь диаграмм с проверками и направлением разработки
 
 | Сценарий | Существующие проверки | Новый вклад Architecture & Security |
 |---|---|---|
