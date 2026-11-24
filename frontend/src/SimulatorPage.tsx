@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import News2Simulator from "./News2Simulator";
+import PewsSimulator from "./PewsSimulator";
 
 import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
 
@@ -18,7 +19,7 @@ const PRIORITIES: { value: Priority; hint: string }[] = [
 
 /** Demo stand-in for patient monitors and call buttons (T-26). */
 export default function SimulatorPage() {
-  const [mode, setMode] = useState<"MANUAL" | "NEWS2">("MANUAL");
+  const [mode, setMode] = useState<"MANUAL" | "NEWS2" | "PEWS">("MANUAL");
   const [news2Busy, setNews2Busy] = useState(false);
   const [wards, setWards] = useState<SimulatorWard[]>([]);
   const [wardId, setWardId] = useState("");
@@ -75,7 +76,7 @@ export default function SimulatorPage() {
   const modeControls = (
     <fieldset className="card choice-field">
       <legend>Режим симулятора</legend>
-      <div className="choice-group choice-group-2" role="radiogroup" aria-label="Режим симулятора">
+      <div className="choice-group" role="radiogroup" aria-label="Режим симулятора">
         <button type="button" role="radio" aria-checked={mode === "MANUAL"} disabled={busy || news2Busy}
           className={mode === "MANUAL" ? "choice choice-active" : "choice"}
           onClick={() => { setMode("MANUAL"); setNotice(null); }}>
@@ -86,6 +87,11 @@ export default function SimulatorPage() {
           onClick={() => { setMode("NEWS2"); setNotice(null); }}>
           NEWS2 по показателям<span>сервер рассчитывает баллы и приоритет</span>
         </button>
+        <button type="button" role="radio" aria-checked={mode === "PEWS"} disabled={busy || news2Busy}
+          className={mode === "PEWS" ? "choice choice-active" : "choice"}
+          onClick={() => { setMode("PEWS"); setNotice(null); }}>
+          Детский PEWS<span>учебная оценка для общих детских палат</span>
+        </button>
       </div>
     </fieldset>
   );
@@ -95,6 +101,14 @@ export default function SimulatorPage() {
       {modeControls}
       {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
       <News2Simulator wards={wards} onBusyChange={setNews2Busy} />
+    </div>;
+  }
+
+  if (mode === "PEWS") {
+    return <div className="stack">
+      {modeControls}
+      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
+      <PewsSimulator wards={wards} />
     </div>;
   }
 

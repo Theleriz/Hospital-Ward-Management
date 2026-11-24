@@ -16,6 +16,7 @@ from app.config import settings
 from app.db import role_connection
 from app.db_errors import database_rules
 from app.priority_rules import classify_vitals, assess_news2_vitals
+from app.pews import assess_pews
 
 ALERT_SERVICE_ROLE = "medbase_alert_service"
 
@@ -40,6 +41,7 @@ def service_db(request: Request):
 class Patient(BaseModel):
     patient_id: int
     full_name: str
+    age_days: int
 
 
 class SimulatorWard(BaseModel):
@@ -100,6 +102,37 @@ class VitalSignsInput(BaseModel):
         return data
 
 
+class PewsAssessmentInput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    patient_id: int
+    respiratory_rate: int | None = None
+    respiratory_distress: Literal["NONE", "MILD", "MODERATE", "SEVERE"] | None = None
+    spo2: int | None = None
+    oxygen_device: Literal["AIR", "OXYGEN", "HIGH_FLOW", "BIPAP", "CPAP"] | None = None
+    oxygen_delivery_pct: int | None = None
+    oxygen_delivery_lpm: int | float | None = None
+    oxygen_delivery_unit: str | None = None
+    heart_rate: int | None = None
+    systolic: int | None = None
+    systolic_code: str | None = None
+    crt_seconds: int | None = None
+    temperature: float | None = None
+    temperature_route: Literal["AXILLA", "TYMPANIC", "SKIN"] | None = None
+    avpu: Literal["A", "V", "P", "U"] | None = None
+    sepsis_suspected: bool | None = None
+    septic_shock_suspected: bool | None = None
+    clinical_intuition: bool | None = None
+    carer_response: Literal["W", "S", "B", "A", "U"] | None = None
+    risk_factors_confirmed: bool | None = None
+    risk_factors: list[Literal[
+        "BASELINE_VITALS", "AIRWAY_RISK", "RESPIRATORY_SUPPORT",
+        "IMMUNOCOMPROMISED", "CORRECTED_GESTATION", "NEUROLOGICAL",
+        "NEURODIVERSITY", "OUTLIER",
+    ]] | None = None
+    measurement_confirmed: bool = False
+
+
 
 class RaisedAlert(BaseModel):
     alert_id: str
@@ -134,15 +167,18 @@ def nurse_on_duty(conn: Connection, ward_id: int) -> str | None:
 def list_wards(conn: Connection = Depends(service_db)) -> list[SimulatorWard]:
     wards = conn.execute('SELECT "WardID", "WardName" FROM "Ward" ORDER BY "WardID"').fetchall()
     patients = conn.execute(
-        """SELECT a."WardID", p."PatientID", p."FullName"
+        """SELECT a."WardID", p."PatientID", p."FullName",
+                  context."EvaluationDate" - context."DOB" AS "AgeDays"
            FROM "Admission" a JOIN "Patient" p ON p."PatientID" = a."PatientID"
+           CROSS JOIN LATERAL fn_GetActivePewsContext(p."PatientID") AS context
            WHERE a."Status" = 'Active' ORDER BY p."FullName" """
     ).fetchall()
     return [
         SimulatorWard(
             ward_id=w[0],
             ward_name=w[1],
-            patients=[Patient(patient_id=p[1], full_name=p[2]) for p in patients if p[0] == w[0]],
+            patients=[Patient(patient_id=p[1], full_name=p[2], age_days=p[3])
+                      for p in patients if p[0] == w[0]],
             nurse_on_duty=nurse_on_duty(conn, w[0]),
         )
         for w in wards
@@ -197,6 +233,27 @@ def assess_vitals(body: VitalSignsInput):
             status_code=422,
             detail=str(exc),
         ) from exc
+
+
+@router.post("/assess-pews")
+def assess_pews_endpoint(body: PewsAssessmentInput, conn: Connection = Depends(service_db)):
+    """Choose the inpatient chart from the server's active-admission context.
+
+    This endpoint only returns an educational assessment. It never creates an
+    alert; a staff review is a separate, deliberate button action.
+    """
+    context = conn.execute(
+        'SELECT * FROM fn_GetActivePewsContext(%s)', (body.patient_id,),
+    ).fetchone()
+    dob = context[0] if context else None
+    ward_type = context[1] if context else None
+    today = context[2] if context else conn.execute("SELECT CURRENT_DATE").fetchone()[0]
+    values = body.model_dump(exclude={"patient_id"})
+    result = assess_pews(
+        dob=dob, today=today, ward_type=ward_type,
+        active_admission=context is not None, measurements=values,
+    )
+    return result
 
 # --- Automatic creation uses a fresh server-side NEWS2 assessment ------------
 

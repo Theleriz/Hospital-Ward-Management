@@ -230,7 +230,7 @@ export function setMyStatus(status: NurseStatus): Promise<NurseInfo> {
 export type SimulatorWard = {
   ward_id: number;
   ward_name: string;
-  patients: { patient_id: number; full_name: string }[];
+  patients: { patient_id: number; full_name: string; age_days?: number | null }[];
   nurse_on_duty: string | null;
 };
 
@@ -415,4 +415,48 @@ export function raiseNews2Alert(input: {
   vitals: News2VitalSigns;
 }): Promise<{ alert_id: string; assigned_nurse_id: string | null; assessment: News2Assessment }> {
   return request("/api/simulator/alerts/from-vitals", { method: "POST", body: JSON.stringify(input) });
+}
+
+// --- NHS England inpatient PEWS (educational only; never creates an alert) ---
+
+export type PewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  signals: string[];
+  reason: string;
+  chart_key: string | null;
+  chart_name: string | null;
+  source_url: string;
+  risk_band?: "LOW" | "MEDIUM" | "HIGH" | "EMERGENCY" | null;
+  policy_version: string;
+};
+
+export type PewsInput = {
+  patient_id: number;
+  respiratory_rate: number | null;
+  respiratory_distress: "NONE" | "MILD" | "MODERATE" | "SEVERE" | null;
+  spo2: number | null;
+  oxygen_device: "AIR" | "OXYGEN" | "HIGH_FLOW" | "BIPAP" | "CPAP" | null;
+  oxygen_delivery_pct: number | null;
+  oxygen_delivery_lpm: number | null;
+  oxygen_delivery_unit: "PERCENT" | "L_MIN" | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  systolic_code: "NCO" | "U0" | "U4" | null;
+  crt_seconds: number | null;
+  temperature: number | null;
+  temperature_route: "AXILLA" | "TYMPANIC" | "SKIN" | null;
+  avpu: "A" | "V" | "P" | "U" | null;
+  sepsis_suspected: boolean | null;
+  septic_shock_suspected: boolean | null;
+  clinical_intuition: boolean | null;
+  carer_response: "W" | "S" | "B" | "A" | "U" | null;
+  risk_factors_confirmed: boolean | null;
+  risk_factors: string[] | null;
+  measurement_confirmed: boolean;
+};
+
+export function assessPews(input: PewsInput): Promise<PewsAssessment> {
+  return request("/api/simulator/assess-pews", { method: "POST", body: JSON.stringify(input) });
 }
