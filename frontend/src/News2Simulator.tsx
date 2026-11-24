@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
-  ApiError, assessNews2Vitals, raiseNews2Alert,
+  ApiError, assessNews2Vitals, raiseNews2Alert, submitStaffReview,
   type News2Assessment, type News2Consciousness, type News2VitalSigns, type SimulatorWard,
 } from "./api";
 
@@ -47,6 +47,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
   const [confirmed, setConfirmed] = useState(false);
   const [acute, setAcute] = useState(false);
   const [assessment, setAssessment] = useState<News2Assessment | null>(null);
+  const [reviewSent, setReviewSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<"assess" | "create" | null>(null);
@@ -75,6 +76,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
     revision.current += 1;
     assessedRevision.current = -1;
     setAssessment(null);
+    setReviewSent(false);
     setError(null);
     setNotice(null);
   }
@@ -256,6 +258,21 @@ export default function News2Simulator({ wards, onBusyChange }: {
             {assessment.news2_risk && ` · риск NEWS2: ${RISK_LABELS[assessment.news2_risk]}`}</p>}
           {assessment.classification_basis === "ACUTE_SYMPTOMS_OVERRIDE" && <p>NEWS2 не вычислен: действует отдельное правило острых симптомов.</p>}
           <p>{assessment.reason}</p>
+          {assessment.status === "REVIEW_REQUIRED" && <div>
+            <p>Это учебная оценка, не диагноз. Заявка не вызывает экстренное оповещение.</p>
+            <button type="button" disabled={!patientId || busy !== null || reviewSent} onClick={async () => {
+              if (!patientId || !assessment.reason) return;
+              setBusy("create"); setError(null);
+              try {
+                await submitStaffReview(Number(patientId), assessment.reason);
+                setReviewSent(true);
+              } catch (err) { setError(errorText(err)); }
+              finally { setBusy(null); }
+            }}>
+              {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
+            </button>
+            {!patientId && <p>Выберите пациента, чтобы отправить заявку.</p>}
+          </div>}
           {Object.keys(assessment.component_scores).length > 0 && <div className="table-wrap"><table className="table">
             <thead><tr><th>Показатель</th><th>Баллы</th></tr></thead>
             <tbody>{Object.entries(assessment.component_scores).map(([name, points]) => <tr key={name}>

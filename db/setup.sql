@@ -15,6 +15,8 @@
 
 \echo '>> 06_login_security.sql'
 \ir 06_login_security.sql
+\echo '>> 20261124_staff_review_requests.sql'
+\ir migrations/20261124_staff_review_requests.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
 

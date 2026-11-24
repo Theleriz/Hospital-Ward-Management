@@ -5,7 +5,7 @@ export type Health = {
   database: "ok" | "unavailable";
 };
 
-export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse";
+export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse" | "Doctor";
 
 export type User = {
   account_id: string;
@@ -18,6 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   PublicStaff: "Персонал",
   Nurse: "Медсестра",
   HeadNurse: "Старшая медсестра",
+  Doctor: "Врач",
 };
 
 export class ApiError extends Error {
@@ -247,6 +248,20 @@ export function getSimulatorWards(): Promise<SimulatorWard[]> {
 
 export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
+}
+
+export type StaffReviewRequest = {
+  request_id: number; patient_id: number; patient_name: string; patient_dob: string; reason: string;
+  requested_by: string; created_at: string; status: "PENDING" | "REVIEWED";
+  reviewed_by: string | null; reviewed_at: string | null;
+};
+
+export function submitStaffReview(patientId: number, reason: string): Promise<StaffReviewRequest> {
+  return request("/api/staff-reviews", { method: "POST", body: JSON.stringify({ patient_id: patientId, reason }) });
+}
+export function getStaffReviews(): Promise<StaffReviewRequest[]> { return request("/api/staff-reviews"); }
+export function markStaffReviewReviewed(id: number): Promise<StaffReviewRequest> {
+  return request(`/api/staff-reviews/${id}/reviewed`, { method: "POST" });
 }
 
  // --- Emergency Priority Detection (Week 12, demo only) ------------------

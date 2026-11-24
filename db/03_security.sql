@@ -75,12 +75,17 @@ GRANT EXECUTE ON PROCEDURE sp_AdmitPatient(INT, INT) TO medbase_admissions;
 GRANT EXECUTE ON PROCEDURE sp_RegisterAndAdmitPatient(VARCHAR, DATE, VARCHAR, VARCHAR, INT) TO medbase_admissions;
 GRANT EXECUTE ON PROCEDURE sp_DischargePatient(INT) TO medbase_admissions;
 
+-- Doctor access is granted only to assignment-filtered SECURITY DEFINER
+-- functions by the additive staff-review migration.
+
 -- Public staff
 GRANT SELECT ON "vw_WardCapacity" TO medbase_public_staff;
 
 -- Nurses: read-only access to alerts and the nurse list (without PIN hashes);
 -- the patient's name is visible so the nurse knows whom the alert is about
 GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment", "vw_WardCapacity" TO medbase_nurse;
+GRANT SELECT, INSERT ON "StaffReviewRequest" TO medbase_nurse;
+GRANT USAGE ON SEQUENCE "StaffReviewRequest_RequestID_seq" TO medbase_nurse;
 GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_nurse;
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
