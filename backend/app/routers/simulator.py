@@ -10,12 +10,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from psycopg import Connection
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.auth import Role, require_roles
 from app.config import settings
 from app.db import role_connection
 from app.db_errors import database_rules
+from app.priority_rules import classify_vitals, assess_news2_vitals
 
 ALERT_SERVICE_ROLE = "medbase_alert_service"
 
@@ -55,6 +56,50 @@ class DeviceAlert(BaseModel):
     source: Literal["MONITOR", "CALL_BUTTON"]
     priority: Literal["LOW", "HIGH", "CRITICAL"]
     description: str | None = Field(default=None, max_length=200)
+
+
+class VitalSignsInput(BaseModel):
+    spo2: float
+    heart_rate: float
+    systolic: float
+    diastolic: float
+    respiratory_rate: float
+    temperature: float
+    measurement_confirmed: bool = False
+    patient_at_rest: bool = False
+    acute_symptoms: bool = False
+    # Missing mode keeps the original demo contract and its existing tests.
+    mode: Literal["DEMO", "NEWS2"] = "DEMO"
+    age_years: int | None = Field(default=None, ge=0, le=130)
+    pregnant: bool | None = None
+    consciousness: Literal["ALERT", "NEW_CONFUSION", "VOICE", "PAIN", "UNRESPONSIVE"] | None = None
+    supplemental_oxygen: bool | None = None
+    spo2_scale: Literal[1, 2] = 1
+    scale2_confirmed: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_news2_payload(cls, data):
+        if not isinstance(data, dict) or data.get("mode") != "NEWS2":
+            return data
+        unknown = set(data) - set(cls.model_fields)
+        if unknown:
+            raise ValueError("Unexpected NEWS2 fields: " + ", ".join(sorted(unknown)))
+        for name in ("spo2", "heart_rate", "systolic", "diastolic", "respiratory_rate", "temperature"):
+            if name in data and type(data[name]) not in (int, float):
+                raise ValueError(f"{name} must be a number")
+        for name in ("measurement_confirmed", "patient_at_rest", "acute_symptoms", "scale2_confirmed"):
+            if name in data and type(data[name]) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name in ("pregnant", "supplemental_oxygen"):
+            if name in data and data[name] is not None and type(data[name]) is not bool:
+                raise ValueError(f"{name} must be boolean or null")
+        if data.get("age_years") is not None and type(data["age_years"]) is not int:
+            raise ValueError("age_years must be an integer")
+        if "spo2_scale" in data and type(data["spo2_scale"]) is not int:
+            raise ValueError("spo2_scale must be integer 1 or 2")
+        return data
+
 
 
 class RaisedAlert(BaseModel):
@@ -164,3 +209,70 @@ def badge_scan(body: BadgeScan, conn: Connection = Depends(service_db)) -> None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Медсестра не на смене")
     with database_rules():
         conn.execute("CALL sp_SetNurseLocation(%s, %s)", (body.nurse_id, body.ward_id))
+
+
+@router.post("/assess-vitals")
+def assess_vitals(body: VitalSignsInput):
+    """Evaluate adult demo measurements without creating an alert."""
+
+    try:
+        if body.mode == "NEWS2":
+            return assess_news2_vitals(**body.model_dump(exclude={"mode"}))
+        return classify_vitals(
+            spo2=body.spo2,
+            heart_rate=body.heart_rate,
+            systolic=body.systolic,
+            diastolic=body.diastolic,
+            respiratory_rate=body.respiratory_rate,
+            temperature=body.temperature,
+            measurement_confirmed=body.measurement_confirmed,
+            patient_at_rest=body.patient_at_rest,
+            acute_symptoms=body.acute_symptoms,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+
+# --- Automatic creation uses a fresh server-side NEWS2 assessment ------------
+
+class News2AlertInput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+    ward_id: int
+    patient_id: int | None = None
+    vitals: VitalSignsInput
+
+
+class News2AlertResponse(RaisedAlert):
+    assessment: dict
+
+
+@router.post("/alerts/from-vitals", status_code=status.HTTP_201_CREATED)
+def raise_news2_alert(body: News2AlertInput, conn: Connection = Depends(service_db)) -> News2AlertResponse:
+    """No client-supplied priority; reuse the existing creation/assignment path."""
+    if body.vitals.mode != "NEWS2":
+        raise HTTPException(status_code=422, detail="Automatic creation requires mode NEWS2")
+    try:
+        assessment = assess_news2_vitals(**body.vitals.model_dump(exclude={"mode"}))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if assessment["status"] != "CLASSIFIED":
+        raise HTTPException(status_code=409, detail=assessment["reason"])
+
+    v = body.vitals
+    if assessment["classification_basis"] == "ACUTE_SYMPTOMS_OVERRIDE":
+        description = "MedBase demo v1: acute symptoms override; NEWS2 not calculated; urgent staff review"
+    else:
+        description = (
+            f"NEWS2 demo v1: score={assessment['news2_score']}; risk={assessment['news2_risk']}; "
+            f"SpO2={v.spo2:g}; scale={v.spo2_scale}; O2={int(v.supplemental_oxygen)}; "
+            f"C={v.consciousness}; HR={v.heart_rate:g}; RR={v.respiratory_rate:g}; "
+            f"SBP={v.systolic:g}; T={v.temperature:g}"
+        )
+    created = raise_alert(
+        DeviceAlert(ward_id=body.ward_id, patient_id=body.patient_id,
+                    source="MONITOR", priority=assessment["priority"], description=description), conn)
+    return News2AlertResponse(alert_id=created.alert_id, assigned_nurse_id=created.assigned_nurse_id,
+                              assessment=assessment)
+
