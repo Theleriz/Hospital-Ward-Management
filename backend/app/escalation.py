@@ -6,11 +6,17 @@ escalation is older than 30 seconds (repeat escalation, decisions.md record 9).
 Each goes to a nurse on shift who was not called for this alert yet and is not
 the assigned one (decisions.md record 12), in this order:
 
-  1. an Available nurse: of the same ward, then of the same floor, then anyone;
-  2. the head nurse, if Available;
-  3. a Busy nurse of the same ward or floor: busy, but on duty and close by;
-  4. the head nurse, if Busy;
-  5. any other Busy nurse.
+  1. a free nurse (Available, not answering another emergency): of the same ward,
+     then of the same floor, then anyone;
+  2. the head nurse, if free;
+  3. an Available nurse who is answering other emergencies, fewest first
+     (decisions.md record 13), then the head nurse in the same situation;
+  4. a Busy nurse of the same ward or floor: busy, but on duty and close by;
+  5. the head nurse, if Busy;
+  6. any other Busy nurse.
+
+Inside each group: the same ward, then the same floor, then fewer open emergencies,
+then the nurse ID (only to make the choice repeatable).
 
 So an alert never stays unheard while somebody is on shift, and it does not bounce
 between two nurses who do not answer. sp_EscalateAlert re-checks the rules, so an
@@ -48,6 +54,11 @@ OVERDUE_SQL = """
 TARGET_SQL = """
     WITH candidate AS (
         SELECT n."NurseID", n."Status", n."Role",
+               -- Emergencies she or he is answering right now (decisions.md record 13)
+               (SELECT COUNT(*) FROM "WardAlert" o
+                WHERE o."Priority" IN ('HIGH', 'CRITICAL')
+                  AND ((o."Status" = 'PENDING' AND o."AssignedNurseID" = n."NurseID")
+                       OR (o."Status" = 'ESCALATED' AND o."EscalatedToNurseID" = n."NurseID"))) AS open_calls,
                EXISTS (SELECT 1 FROM "NurseAssignment" x
                        WHERE x."NurseID" = n."NurseID" AND x."WardID" = %(ward)s) AS in_ward,
                EXISTS (SELECT 1 FROM "NurseAssignment" x JOIN "Ward" w ON w."WardID" = x."WardID"
@@ -65,13 +76,15 @@ TARGET_SQL = """
     FROM candidate
     ORDER BY
       CASE
-        WHEN "Status" = 'Available' AND "Role" = 'Nurse' THEN 1
-        WHEN "Status" = 'Available' THEN 2
-        WHEN "Role" = 'Nurse' AND on_floor THEN 3
-        WHEN "Role" = 'HeadNurse' THEN 4
-        ELSE 5
+        WHEN "Status" = 'Available' AND open_calls = 0 AND "Role" = 'Nurse' THEN 1
+        WHEN "Status" = 'Available' AND open_calls = 0 THEN 2
+        WHEN "Status" = 'Available' AND "Role" = 'Nurse' THEN 3
+        WHEN "Status" = 'Available' THEN 4
+        WHEN "Role" = 'Nurse' AND on_floor THEN 5
+        WHEN "Role" = 'HeadNurse' THEN 6
+        ELSE 7
       END,
-      NOT in_ward, NOT on_floor, "NurseID"
+      NOT in_ward, NOT on_floor, open_calls, "NurseID"
     LIMIT 1
 """
 
