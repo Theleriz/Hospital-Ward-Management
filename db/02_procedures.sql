@@ -676,15 +676,21 @@ BEGIN
         RETURN;
     END IF;
 
-    -- Atomic swap in a single statement so TR_NurseAssignment_RequirePrimary always holds
-    WITH demote AS (
-        UPDATE "NurseAssignment"
-        SET "IsPrimary" = FALSE
-        WHERE "WardID" = p_WardID AND "IsPrimary"
-    )
+    -- Swap in two steps: UX_NurseAssignment_OnePrimaryPerWard allows only one
+    -- primary row at a time, so the old one is demoted first. The ward has no
+    -- primary nurse between the steps, so the "ward keeps its primary nurse"
+    -- check waits until the new one is set and runs at SET ... IMMEDIATE.
+    SET CONSTRAINTS "TR_NurseAssignment_RequirePrimary" DEFERRED;
+
+    UPDATE "NurseAssignment"
+    SET "IsPrimary" = FALSE
+    WHERE "WardID" = p_WardID AND "IsPrimary";
+
     INSERT INTO "NurseAssignment" ("NurseID", "WardID", "IsPrimary")
     VALUES (p_NurseID, p_WardID, TRUE)
     ON CONFLICT ("NurseID", "WardID") DO UPDATE SET "IsPrimary" = TRUE;
+
+    SET CONSTRAINTS "TR_NurseAssignment_RequirePrimary" IMMEDIATE;
 
     INSERT INTO "NurseAssignmentLog" (
         "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
@@ -827,14 +833,18 @@ BEGIN
         RETURN;
     END IF;
 
-    WITH demote AS (
-        UPDATE "NurseAssignment"
-        SET "IsPrimary" = FALSE
-        WHERE "WardID" = p_WardID AND "IsPrimary"
-    )
+    -- Two-step swap, same as sp_AssignWardNurse
+    SET CONSTRAINTS "TR_NurseAssignment_RequirePrimary" DEFERRED;
+
+    UPDATE "NurseAssignment"
+    SET "IsPrimary" = FALSE
+    WHERE "WardID" = p_WardID AND "IsPrimary";
+
     INSERT INTO "NurseAssignment" ("NurseID", "WardID", "IsPrimary")
     VALUES (p_AssignedNurseID, p_WardID, TRUE)
     ON CONFLICT ("NurseID", "WardID") DO UPDATE SET "IsPrimary" = TRUE;
+
+    SET CONSTRAINTS "TR_NurseAssignment_RequirePrimary" IMMEDIATE;
 
     INSERT INTO "NurseAssignmentLog" (
         "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
