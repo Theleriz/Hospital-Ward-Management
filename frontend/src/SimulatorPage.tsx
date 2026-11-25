@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import News2Simulator from "./News2Simulator";
 import PewsSimulator from "./PewsSimulator";
+import MaternalMewsSimulator from "./MaternalMewsSimulator";
 
 import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
 
@@ -19,7 +20,7 @@ const PRIORITIES: { value: Priority; hint: string }[] = [
 
 /** Demo stand-in for patient monitors and call buttons (T-26). */
 export default function SimulatorPage() {
-  const [mode, setMode] = useState<"MANUAL" | "NEWS2" | "PEWS">("MANUAL");
+  const [mode, setMode] = useState<"MANUAL" | "NEWS2" | "PEWS" | "MATERNAL_MEWS">("MANUAL");
   const [news2Busy, setNews2Busy] = useState(false);
   const [wards, setWards] = useState<SimulatorWard[]>([]);
   const [wardId, setWardId] = useState("");
@@ -92,6 +93,11 @@ export default function SimulatorPage() {
           onClick={() => { setMode("PEWS"); setNotice(null); }}>
           Детский PEWS<span>учебная оценка для общих детских палат</span>
         </button>
+        <button type="button" role="radio" aria-checked={mode === "MATERNAL_MEWS"} disabled={busy || news2Busy}
+          className={mode === "MATERNAL_MEWS" ? "choice choice-active" : "choice"}
+          onClick={() => { setMode("MATERNAL_MEWS"); setNotice(null); }}>
+          Акушерский MEWS<span>учебная оценка матери при беременности и после родов</span>
+        </button>
       </div>
     </fieldset>
   );
@@ -109,6 +115,14 @@ export default function SimulatorPage() {
       {modeControls}
       {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
       <PewsSimulator wards={wards} />
+    </div>;
+  }
+
+  if (mode === "MATERNAL_MEWS") {
+    return <div className="stack">
+      {modeControls}
+      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
+      <MaternalMewsSimulator wards={wards} />
     </div>;
   }
 

@@ -460,3 +460,40 @@ export type PewsInput = {
 export function assessPews(input: PewsInput): Promise<PewsAssessment> {
   return request("/api/simulator/assess-pews", { method: "POST", body: JSON.stringify(input) });
 }
+
+// --- NHS England national maternity MEWS (educational only) -----------------
+
+export type MaternalMewsInput = {
+  patient_id: number;
+  maternal_status: "PREGNANT" | "POSTPARTUM" | null;
+  status_confirmed: boolean;
+  delivery_at: string | null;
+  respiratory_rate: number | null;
+  spo2: number | null;
+  temperature: number | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  measurements_confirmed: boolean;
+  additional_concerns_confirmed: boolean;
+  additional_concerns: string[] | null;
+};
+
+export type MaternalMewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  additional_concerns: string[];
+  risk_level: "LOW" | "LOW_MEDIUM" | "MEDIUM" | "HIGH" | null;
+  pulse_rule: "ANTENATAL" | "POSTPARTUM_UNDER_48H" | "POSTPARTUM_48H_PLUS" | null;
+  reason: string;
+  policy_version: string;
+  source_url: string;
+  scope_source_url: string;
+};
+
+export function assessMaternalMews(input: MaternalMewsInput): Promise<MaternalMewsAssessment> {
+  return request("/api/simulator/assess-maternal-mews", {
+    method: "POST", body: JSON.stringify(input),
+  });
+}

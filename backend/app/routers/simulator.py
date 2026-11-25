@@ -5,6 +5,7 @@ real device integration would. The backend picks the nurse of the ward; the
 procedure re-checks the choice. Turned off by MEDBASE_SIMULATOR_ENABLED=false.
 """
 
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -17,6 +18,7 @@ from app.db import role_connection
 from app.db_errors import database_rules
 from app.priority_rules import classify_vitals, assess_news2_vitals
 from app.pews import assess_pews
+from app.maternal_mews import assess_maternal_mews
 
 ALERT_SERVICE_ROLE = "medbase_alert_service"
 
@@ -131,6 +133,28 @@ class PewsAssessmentInput(BaseModel):
         "NEURODIVERSITY", "OUTLIER",
     ]] | None = None
     measurement_confirmed: bool = False
+
+
+class MaternalMewsAssessmentInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    patient_id: int = Field(gt=0)
+    maternal_status: Literal["PREGNANT", "POSTPARTUM"] | None = None
+    status_confirmed: bool = False
+    delivery_at: datetime | None = None
+    respiratory_rate: int | None = None
+    spo2: int | None = None
+    temperature: float | None = None
+    heart_rate: int | None = None
+    systolic: int | None = None
+    diastolic: int | None = None
+    measurements_confirmed: bool = False
+    additional_concerns_confirmed: bool = False
+    additional_concerns: list[Literal[
+        "HEALTHCARE_PROFESSIONAL", "WOMAN_FAMILY", "SIGNIFICANT_THERAPY",
+        "INCREASED_PAIN", "VAGINAL_BLEEDING", "REDUCED_URINE_OUTPUT",
+        "ALTERED_CONSCIOUSNESS",
+    ]] | None = None
 
 
 
@@ -254,6 +278,37 @@ def assess_pews_endpoint(body: PewsAssessmentInput, conn: Connection = Depends(s
         active_admission=context is not None, measurements=values,
     )
     return result
+
+
+def maternal_mews_now() -> datetime:
+    """Server clock used to determine postpartum applicability and pulse rule."""
+    return datetime.now(timezone.utc)
+
+
+@router.post("/assess-maternal-mews")
+def assess_maternal_mews_endpoint(
+    body: MaternalMewsAssessmentInput,
+    conn: Connection = Depends(service_db),
+):
+    """Assess explicit maternal status; assessment never creates an alert."""
+    active_admission = conn.execute(
+        '''SELECT EXISTS (
+               SELECT 1 FROM "Admission"
+               WHERE "PatientID" = %s AND "Status" = 'Active'
+           )''',
+        (body.patient_id,),
+    ).fetchone()[0]
+    values = body.model_dump(exclude={
+        "patient_id", "maternal_status", "status_confirmed", "delivery_at",
+    })
+    return assess_maternal_mews(
+        active_admission=active_admission,
+        maternal_status=body.maternal_status,
+        delivery_at=body.delivery_at,
+        status_confirmed=body.status_confirmed,
+        measurements=values,
+        evaluated_at=maternal_mews_now(),
+    )
 
 # --- Automatic creation uses a fresh server-side NEWS2 assessment ------------
 
