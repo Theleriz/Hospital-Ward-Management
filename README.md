@@ -154,6 +154,7 @@ docker compose up -d --build --wait
 | API | http://localhost:8080/api/… (через nginx) или http://localhost:8000/api/… (напрямую) |
 | Документация API (Swagger) | http://localhost:8080/api/docs |
 | Проверка состояния | http://localhost:8080/api/health |
+| Табло в коридоре (без входа, только внутренняя сеть или известный экран) | http://localhost:8081 (порт меняет `MEDBASE_BOARD_PORT`; см. [decisions.md](docs/decisions.md), запись 14) |
 
 `--build` пересобирает backend и интерфейс после изменений в коде. Только база: `docker compose up -d --wait db`.
 
@@ -256,6 +257,10 @@ cd backend
   docker compose up -d --build --wait backend
   ```
 
+- для табло в коридоре на существующей базе — так же, миграцией
+  `/db/migrations/20261126_corridor_board.sql` (роль `medbase_board` и view `vw_CorridorAlerts`),
+  затем `docker compose up -d --build --wait backend frontend`.
+
 ## Доступ к БД из терминала
 
 Через psql внутри контейнера (ничего ставить не нужно):
@@ -325,7 +330,7 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускае
 | `db-check` | `scripts/check-db.sh`: база с нуля, SQL-тесты, демо до конца, `05_queries.sql`, повторный `setup.sql` и тесты ещё раз; затем `scripts/check-backup.sh`: бэкап и восстановление на новом сервере | `bash scripts/check-db.sh`, затем `bash scripts/check-backup.sh` |
 | `backend-tests` | поднимает чистую базу (`docker compose up -d --wait db`) и запускает все тесты backend (pytest, 263 теста); отчёт JUnit сохраняется как артефакт запуска | `docker compose up -d --wait db`, затем в `backend`: `python -m pytest` |
 | `frontend-build` | `npm ci` и `npm run build`: проверка типов TypeScript и production-сборка | в `frontend`: `npm ci`, `npm run build` |
-| `system-start` | `docker compose up -d --build --wait` всей системы (NFR-05), затем через nginx на порту 8080: главная страница, `/api/health` с подключённой базой, вход тестовой старшей медсестрой и отчёт | `docker compose up -d --build --wait` |
+| `system-start` | `docker compose up -d --build --wait` всей системы (NFR-05), затем через nginx на порту 8080: главная страница, `/api/health` с подключённой базой, вход тестовой старшей медсестрой и отчёт; табло на порту 8081 (страница и сводка), на нём нет остального API, а на 8080 нет сводки табло | `docker compose up -d --build --wait` |
 
 Что делает `db-check` по шагам:
 

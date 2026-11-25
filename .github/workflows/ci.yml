@@ -134,6 +134,21 @@ jobs:
             -d '{"badge_id":"BADGE-1010","pin":"1010"}' http://127.0.0.1:8080/api/auth/login
           curl --fail --silent --show-error -b cookies.txt http://127.0.0.1:8080/api/reports/alerts?hours=24 >/dev/null
 
+      # Part 4: corridor board on its own port, no login, only the summary
+      - name: Corridor board is served on its own port
+        run: |
+          curl --fail --silent --show-error http://127.0.0.1:8081/ | grep -q 'Табло отделения'
+          curl --fail --silent --show-error http://127.0.0.1:8081/api/board/summary | tee board.json
+          grep -q '"wards"' board.json
+
+      - name: Corridor board port serves nothing else, staff port does not serve the board
+        run: |
+          code() { curl --silent --output /dev/null --write-out '%{http_code}' "$@"; }
+          test "$(code http://127.0.0.1:8081/api/auth/me)" = 404
+          test "$(code http://127.0.0.1:8081/api/wards)" = 404
+          test "$(code -X POST http://127.0.0.1:8081/api/board/summary)" = 403
+          test "$(code http://127.0.0.1:8080/api/board/summary)" = 404
+
       - name: Service logs
         if: failure()
         run: docker compose logs

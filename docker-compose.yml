@@ -38,6 +38,10 @@ services:
     container_name: medbase-frontend
     ports:
       - "127.0.0.1:8080:80"
+      # Corridor board (no login). Local only by default; for real corridor screens
+      # publish it on the hospital network interface (decisions.md, record 14).
+      # MEDBASE_BOARD_PORT changes the host port if 8081 is taken.
+      - "127.0.0.1:${MEDBASE_BOARD_PORT:-8081}:81"
     depends_on:
       backend:
         condition: service_healthy
