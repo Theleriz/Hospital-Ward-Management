@@ -6,7 +6,7 @@ ward, its occupancy, and for each active alert its priority, how long it has bee
 waiting, whether it was escalated and whether staff from outside the ward was called.
 
 Access without login is allowed only from the hospital's internal networks or from
-known screens that present their secret token (decisions.md, record 14). The data
+known screens that present their secret token (decisions.md, record 15). The data
 is read as the database role medbase_board, which can read nothing but this summary.
 """
 

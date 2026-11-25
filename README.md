@@ -154,7 +154,7 @@ docker compose up -d --build --wait
 | API | http://localhost:8080/api/… (через nginx) или http://localhost:8000/api/… (напрямую) |
 | Документация API (Swagger) | http://localhost:8080/api/docs |
 | Проверка состояния | http://localhost:8080/api/health |
-| Табло в коридоре (без входа, только внутренняя сеть или известный экран) | http://localhost:8081 (порт меняет `MEDBASE_BOARD_PORT`; см. [decisions.md](docs/decisions.md), запись 14) |
+| Табло в коридоре (без входа, только внутренняя сеть или известный экран) | http://localhost:8081 (порт меняет `MEDBASE_BOARD_PORT`; см. [decisions.md](docs/decisions.md), запись 15) |
 
 `--build` пересобирает backend и интерфейс после изменений в коде. Только база: `docker compose up -d --wait db`.
 
