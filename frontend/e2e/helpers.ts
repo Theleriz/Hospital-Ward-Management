@@ -4,6 +4,7 @@ export const BOARD_URL = process.env.MEDBASE_E2E_BOARD_URL ?? "http://127.0.0.1:
 
 // Test accounts from db/04_seed.sql (development data only)
 export const NURSE_4 = { badge: "BADGE-1004", pin: "4444" }; // primary nurse of ward 104
+export const NURSE_3 = { badge: "BADGE-1003", pin: "3333" }; // Madina Tulegenova, wards 102 and 103
 export const HEAD_NURSE = { badge: "BADGE-1010", pin: "1010" };
 
 export async function signIn(page: Page, account: { badge: string; pin: string }) {
