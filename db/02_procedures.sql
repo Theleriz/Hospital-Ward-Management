@@ -344,8 +344,9 @@ $$;
 --------------------------------------------------------------------------------
 -- Procedure 6: sp_AcknowledgeAlert
 -- Business Logic: Nurse acknowledging an alert (UC-6, Lab 04 / Task 07 Main Action)
--- Allowed for the assigned nurse, the nurse it was escalated to, or any nurse
--- of the alert's ward who is on shift. The assigned nurse is not overwritten.
+-- Allowed for the assigned nurse, any nurse it was escalated to (also an earlier one,
+-- who may already be on the way, decisions.md record 13), or any nurse of the alert's
+-- ward who is on shift. The assigned nurse is not overwritten.
 -- Acknowledging an already acknowledged alert is a no-op.
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE sp_AcknowledgeAlert(
@@ -387,7 +388,10 @@ BEGIN
     IF p_NurseID IS DISTINCT FROM v_Alert."AssignedNurseID"
        AND p_NurseID IS DISTINCT FROM v_Alert."EscalatedToNurseID"
        AND NOT EXISTS (SELECT 1 FROM "NurseAssignment"
-                       WHERE "NurseID" = p_NurseID AND "WardID" = v_Alert."WardID") THEN
+                       WHERE "NurseID" = p_NurseID AND "WardID" = v_Alert."WardID")
+       AND NOT EXISTS (SELECT 1 FROM "AlertEvent"
+                       WHERE "AlertID" = p_AlertID AND "EventType" = 'ESCALATED'
+                         AND "NurseID" = p_NurseID) THEN
         RAISE EXCEPTION 'Nurse % cannot acknowledge alert % (not assigned to it or to Ward ID %).',
             p_NurseID, p_AlertID, v_Alert."WardID";
     END IF;

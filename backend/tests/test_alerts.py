@@ -222,7 +222,7 @@ def test_alert_goes_to_the_new_primary_nurse_when_primary_is_off_shift(client):
     login(client, NURSE)
     assert client.put("/api/nurses/me/status", json={"status": "OffShift"}).status_code == 200
 
-    # T-51 (decisions.md record 13): the ward is handed to the best nurse on shift at once,
+    # T-51 (decisions.md record 14): the ward is handed to the best nurse on shift at once,
     # a free (Available) nurse before a busy one
     new_primary, status = primary_of(101)
     assert new_primary != "NURSE-01"
@@ -275,18 +275,21 @@ def alert_status(client, alert_id: str) -> dict:
 
 
 def test_overdue_alert_is_escalated_to_an_available_nurse(client):
-    # ALT-1001 is 5 minutes old; nobody else in ward 101 is Available, so it goes to
-    # NURSE-04, who works on the same floor (ward 104). ALT-1003 was escalated to
-    # NURSE-03 30 minutes ago and is still not acknowledged, so it goes on as well.
-    assert dict(escalate_overdue(client.app.state.pool)) == {"ALT-1001": "NURSE-04", "ALT-1003": "NURSE-04"}
+    # ALT-1003 (the older one) was escalated to NURSE-03 30 minutes ago and goes on to
+    # NURSE-04, who works on the same floor (ward 104). ALT-1001 is 5 minutes old; NURSE-04
+    # is now answering ALT-1003, so it goes to NURSE-03, who is free (decisions.md, record 13).
+    assert dict(escalate_overdue(client.app.state.pool)) == {"ALT-1003": "NURSE-04", "ALT-1001": "NURSE-03"}
 
     alert = alert_status(client, "ALT-1001")
     assert alert["status"] == "ESCALATED"
-    assert alert["escalated_to_id"] == "NURSE-04"
+    assert alert["escalated_to_id"] == "NURSE-03"
     assert alert["assigned_nurse_id"] == "NURSE-01"
 
 
 def test_escalation_prefers_a_nurse_of_the_same_ward(client):
+    # Only this alert is overdue: the seed alerts would keep NURSE-03 busy (decisions.md, record 13)
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-01')")
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1003', 'NURSE-03')")
     login(client, NURSE_2)
     raised = simulate(client, ward_id=102, patient_id=3, priority="HIGH")
     make_old(raised["alert_id"])

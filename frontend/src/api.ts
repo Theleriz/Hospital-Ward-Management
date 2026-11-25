@@ -55,6 +55,19 @@ const FIELD_LABELS: Record<string, string> = {
   ward_id: "палата",
   badge_id: "бейдж",
   pin: "PIN",
+  spo2: "SpO₂",
+  heart_rate: "пульс",
+  systolic: "систолическое давление",
+  diastolic: "диастолическое давление",
+  respiratory_rate: "частота дыхания",
+  temperature: "температура",
+  age_years: "возраст",
+  pregnant: "беременность",
+  consciousness: "сознание",
+  supplemental_oxygen: "дополнительный кислород",
+  measurement_confirmed: "достоверность измерений",
+  scale2_confirmed: "подтверждение шкалы SpO₂ 2",
+  spo2_scale: "шкала SpO₂",
   nurse_id: "медсестра",
   reason: "причина",
 };
@@ -238,6 +251,42 @@ export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assi
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
 }
 
+ // --- Emergency Priority Detection (Week 12, demo only) ------------------
+
+export type VitalSigns = {
+  spo2: number;
+  heart_rate: number;
+  systolic: number;
+  diastolic: number;
+  respiratory_rate: number;
+  temperature: number;
+  measurement_confirmed: boolean;
+  patient_at_rest: boolean;
+  acute_symptoms: boolean;
+};
+
+export type PriorityAssessment = {
+  priority: Priority | null;
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  reason: string;
+  measurements: {
+    spo2: number;
+    heart_rate: number;
+    systolic: number;
+    diastolic: number;
+    respiratory_rate: number;
+    temperature: number;
+  };
+};
+
+export function assessVitals(vitals: VitalSigns): Promise<PriorityAssessment> {
+  return request("/api/simulator/assess-vitals", {
+    method: "POST",
+    body: JSON.stringify(vitals),
+  });
+}
+
+
 // --- Head nurse report (UC-8) ------------------------------------------------------------
 
 export type AlertStatus = "PENDING" | "ESCALATED" | "ACKNOWLEDGED";
@@ -318,6 +367,41 @@ export function getAlertReport(hours: number): Promise<AlertReport> {
 
 export function getAlertJournal(alertId: string): Promise<AlertJournalEvent[]> {
   return request(`/api/reports/alerts/${encodeURIComponent(alertId)}/events`);
+}
+
+// --- NEWS2 automatic simulator mode ------------------------------------------
+
+export type News2Consciousness = "ALERT" | "NEW_CONFUSION" | "VOICE" | "PAIN" | "UNRESPONSIVE";
+
+export type News2VitalSigns = VitalSigns & {
+  mode: "NEWS2";
+  age_years: number | null;
+  pregnant: boolean | null;
+  consciousness: News2Consciousness | null;
+  supplemental_oxygen: boolean | null;
+  spo2_scale: 1 | 2;
+  scale2_confirmed: boolean;
+};
+
+export type News2Assessment = PriorityAssessment & {
+  news2_score: number | null;
+  component_scores: Record<string, number>;
+  news2_risk: "LOW" | "LOW_MEDIUM" | "MEDIUM" | "HIGH" | null;
+  single_parameter_trigger: boolean;
+  classification_basis: "NEWS2" | "ACUTE_SYMPTOMS_OVERRIDE" | null;
+  policy_version: string;
+};
+
+export function assessNews2Vitals(vitals: News2VitalSigns): Promise<News2Assessment> {
+  return request("/api/simulator/assess-vitals", { method: "POST", body: JSON.stringify(vitals) });
+}
+
+export function raiseNews2Alert(input: {
+  ward_id: number;
+  patient_id: number | null;
+  vitals: News2VitalSigns;
+}): Promise<{ alert_id: string; assigned_nurse_id: string | null; assessment: News2Assessment }> {
+  return request("/api/simulator/alerts/from-vitals", { method: "POST", body: JSON.stringify(input) });
 }
 
 // --- Ward nurse assignments (head nurse, T-51) -----------------------------------------------

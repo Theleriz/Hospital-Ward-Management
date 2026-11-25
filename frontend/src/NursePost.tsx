@@ -281,8 +281,12 @@ function AlertCard({ alert, onAcknowledge }: { alert: Alert; onAcknowledge: () =
                 {" "}
                 · {next} через {left} с
               </span>
+            ) : left > -3 ? (
+              // The escalation round runs every ~2 s
+              <span className="hint"> · передаётся дальше…</span>
             ) : (
-              <span className="escalated"> · ждёт свободную медсестру для эскалации</span>
+              // Every nurse on shift was already called (decisions.md, record 12)
+              <span className="escalated"> · все медсёстры на смене уже вызваны, ждёт ответа</span>
             ))}
         </p>
       </div>

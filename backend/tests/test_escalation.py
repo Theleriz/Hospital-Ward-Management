@@ -16,7 +16,8 @@ Seed state (db/04_seed.sql):
   ALT-1001  CRITICAL PENDING ward 101, assigned NURSE-01, 5 minutes old (overdue)
   ALT-1003  CRITICAL ESCALATED ward 101, NURSE-01 -> NURSE-03 30 minutes ago (overdue again)
 
-Order of choice: a nurse of the alert's ward, then one working on the same floor, then anyone.
+Order of choice: free nurses before those answering another emergency, then Busy ones;
+inside a group: the same ward, then the same floor, then anyone (backend/app/escalation.py).
 """
 
 import psycopg
@@ -116,7 +117,10 @@ def test_nurse_who_ends_her_or_his_shift_is_skipped(client):
 
 
 def test_nurse_of_the_ward_who_becomes_free_is_preferred(client):
-    # NURSE-02 also works in ward 101; once Available she or he goes before other wards
+    close_seed_escalation()  # only ALT-1001 is overdue
+    # NURSE-02 also works in ward 101; once Available she or he goes before other wards.
+    # ALT-1005 (ward 102) is her or his own open call: close it, so she or he is really free
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02')")
     login(client, NURSE_2)
     client.put("/api/nurses/me/status", json={"status": "Available"})
 
@@ -150,12 +154,14 @@ def test_alert_without_a_nurse_on_shift_is_escalated_to_a_free_nurse(client):
 # --- After the escalation ----------------------------------------------------------------
 
 def test_escalation_is_written_to_the_journal(client):
+    close_seed_escalation()  # only ALT-1001 is overdue
     escalate(client)
 
     assert journal("ALT-1001")[-1] == ("ESCALATED", "NURSE-04")
 
 
 def test_escalated_alert_is_acknowledged_by_the_new_nurse(client):
+    close_seed_escalation()  # only ALT-1001 is overdue
     escalate(client)
     login(client, NURSE_4)
 
@@ -173,11 +179,13 @@ def test_escalated_alert_is_acknowledged_by_the_new_nurse(client):
 # --- Same floor and repeat escalation (decisions.md, record 9) -----------------------------
 
 def test_escalation_prefers_a_nurse_on_the_same_floor(client):
+    close_seed_escalation()  # only ALT-1001 is overdue
     # Ward 101 is on floor 1; NURSE-04 (ward 104) is on floor 1, NURSE-03 on floor 2
     assert escalate(client)["ALT-1001"] == "NURSE-04"
 
 
 def test_nurse_of_another_floor_gets_the_alert_when_the_floor_is_busy(client):
+    close_seed_escalation()  # only ALT-1001 is overdue
     set_status(["NURSE-04"], "Busy")
 
     assert escalate(client)["ALT-1001"] == "NURSE-03"
@@ -300,3 +308,83 @@ def test_acknowledgement_stops_the_chain(client):
     age_escalation(alert["alert_id"])
 
     assert alert["alert_id"] not in escalate(client)
+
+
+# --- Load and earlier recipients (decisions.md, record 13) ----------------------------------
+# A nurse who is already answering an emergency is not the first choice for the next one,
+# and a nurse who was called earlier keeps the alert: she or he may already be on the way.
+
+def close_seed_escalation() -> None:
+    """ALT-1003 is still open with NURSE-03; close it so it does not count as her or his load."""
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1003', 'NURSE-03')")
+
+
+def close_seed_alerts() -> None:
+    """Close both overdue seed alerts, so only the alert of the test is escalated."""
+    close_seed_escalation()
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-01')")
+
+
+def give_open_call(client, account: dict, ward_id: int) -> str:
+    """A fresh (not overdue) HIGH alert assigned to the nurse of `ward_id`."""
+    return raise_alert(client, account, ward_id=ward_id, patient_id=None, source="CALL_BUTTON")["alert_id"]
+
+
+def test_two_emergencies_at_once_go_to_two_different_nurses(client):
+    close_seed_escalation()
+    second = raise_alert(client, NURSE)
+    make_old(second["alert_id"], 60)
+
+    escalated = escalate(client)
+
+    # ALT-1001 (CRITICAL) goes first to NURSE-04 on the same floor; the second alert
+    # does not pile up on her or him while NURSE-03 is free
+    assert escalated["ALT-1001"] == "NURSE-04"
+    assert escalated[second["alert_id"]] == "NURSE-03"
+
+
+def test_free_nurse_goes_before_a_nurse_answering_another_emergency(client):
+    close_seed_escalation()
+    give_open_call(client, NURSE_4, ward_id=104)
+
+    # NURSE-04 is on the same floor, but is answering a call in ward 104
+    assert escalate(client)["ALT-1001"] == "NURSE-03"
+
+
+def test_nurse_answering_another_emergency_goes_before_a_busy_one(client):
+    close_seed_escalation()
+    give_open_call(client, NURSE_4, ward_id=104)
+    set_status(["NURSE-03", "NURSE-10"], "Busy")
+
+    # NURSE-04 has a call but is Available; NURSE-02 (ward 101) is Busy
+    assert escalate(client)["ALT-1001"] == "NURSE-04"
+
+
+def test_earlier_recipient_keeps_seeing_the_alert_and_can_acknowledge(client):
+    close_seed_alerts()
+    alert = raise_alert(client, NURSE)
+    make_old(alert["alert_id"], 120)
+    assert escalate(client)[alert["alert_id"]] == "NURSE-04"
+    age_escalation(alert["alert_id"])
+    assert escalate(client)[alert["alert_id"]] == "NURSE-03"
+
+    # NURSE-04 works in ward 104, not 101, and is no longer the escalation target
+    login(client, NURSE_4)
+    card = next(a for a in client.get("/api/alerts").json()["open"] if a["alert_id"] == alert["alert_id"])
+    assert card["can_acknowledge"] is True
+    response = client.post(f"/api/alerts/{alert['alert_id']}/acknowledge")
+
+    assert response.status_code == 200
+    assert response.json()["acknowledged_by_id"] == "NURSE-04"
+    assert response.json()["escalated_to_id"] == "NURSE-03"
+
+
+def test_nurse_who_was_never_called_does_not_see_the_alert(client):
+    close_seed_alerts()
+    alert = raise_alert(client, NURSE)
+    make_old(alert["alert_id"], 120)
+    escalate(client)  # -> NURSE-04
+
+    # NURSE-03 works on floor 2 and was not called for it
+    login(client, NURSE_3)
+    assert alert["alert_id"] not in [a["alert_id"] for a in client.get("/api/alerts").json()["open"]]
