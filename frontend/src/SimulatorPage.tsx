@@ -1,6 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
+import {
+  ApiError,
+  getSimulatorNurses,
+  getSimulatorWards,
+  raiseAlert,
+  scanBadge,
+  type AlertSource,
+  type Priority,
+  type SimulatorNurse,
+  type SimulatorWard,
+} from "./api";
 
 type Notice = { kind: "ok" | "error"; text: string } | null;
 
@@ -180,6 +190,97 @@ export default function SimulatorPage() {
           </ul>
         </aside>
       </div>
+
+      <BadgeReader wards={wards} onNotice={setNotice} />
+    </div>
+  );
+}
+
+const STATUS_WORDS = { Available: "свободна", Busy: "занята", OffShift: "не на смене" } as const;
+
+/**
+ * Door badge readers (decisions.md, record 14): a nurse touches the reader at a ward
+ * door, and the system knows where she or he is. Escalation calls the nearest nurse.
+ */
+function BadgeReader({ wards, onNotice }: { wards: SimulatorWard[]; onNotice: (n: Notice) => void }) {
+  const [nurses, setNurses] = useState<SimulatorNurse[]>([]);
+  const [nurseId, setNurseId] = useState("");
+  const [doorId, setDoorId] = useState("");
+
+  const load = () =>
+    getSimulatorNurses()
+      .then((data) => {
+        setNurses(data);
+        setNurseId((current) => current || (data.find((n) => n.status !== "OffShift")?.nurse_id ?? ""));
+      })
+      .catch(() => undefined);
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (!doorId && wards[0]) setDoorId(String(wards[0].ward_id));
+  }, [wards, doorId]);
+
+  const wardName = (id: number | null) => wards.find((w) => w.ward_id === id)?.ward_name ?? "неизвестно";
+
+  async function onScan(event: FormEvent) {
+    event.preventDefault();
+    try {
+      await scanBadge(nurseId, Number(doorId));
+      const nurse = nurses.find((n) => n.nurse_id === nurseId);
+      onNotice({ kind: "ok", text: `${nurse?.full_name ?? nurseId} теперь в палате «${wardName(Number(doorId))}»` });
+      await load();
+    } catch (err) {
+      onNotice({ kind: "error", text: err instanceof ApiError ? err.message : "Сервер недоступен" });
+    }
+  }
+
+  return (
+    <div className="sim-layout">
+      <form className="card form-grid" onSubmit={onScan}>
+        <h2 className="form-title">Считыватель бейджа у двери палаты</h2>
+        <label>
+          Медсестра
+          <select value={nurseId} onChange={(e) => setNurseId(e.target.value)} required>
+            {nurses.map((n) => (
+              <option key={n.nurse_id} value={n.nurse_id} disabled={n.status === "OffShift"}>
+                {n.full_name} ({STATUS_WORDS[n.status]})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Дверь палаты
+          <select value={doorId} onChange={(e) => setDoorId(e.target.value)} required>
+            {wards.map((w) => (
+              <option key={w.ward_id} value={w.ward_id}>
+                {w.ward_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="form-wide">
+          <button type="submit" disabled={!nurseId || !doorId}>
+            Приложить бейдж
+          </button>
+        </div>
+      </form>
+
+      <aside className="card">
+        <h2>Где медсёстры сейчас</h2>
+        <ul className="map-nurses">
+          {nurses.map((n) => (
+            <li key={n.nurse_id} className="map-nurse">
+              <i className={`dot-status dot-${n.status}`} />
+              <span>{n.full_name}</span>
+              <span className="hint">{n.status === "OffShift" ? "не на смене" : wardName(n.current_ward_id)}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="hint">Эскалация зовёт ближайшую свободную медсестру: в палате, затем на этаже.</p>
+      </aside>
     </div>
   );
 }

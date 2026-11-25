@@ -1550,3 +1550,97 @@ button.danger:where(:hover:not(:disabled)) {
     justify-content: space-between;
   }
 }
+
+/* --- Ward map (decisions.md, record 14) ------------------------------------- */
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  align-items: center;
+}
+
+.map-wards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.map-ward {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.map-ward-alarm {
+  border-color: var(--down);
+  background: var(--down-tint);
+  box-shadow: 0 0 0 2px var(--down-bg);
+}
+
+.map-ward-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.map-alert {
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.map-nurses {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.map-nurse {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.map-others {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.dot-status {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot-Available {
+  background: var(--ok);
+}
+
+.dot-Busy {
+  background: var(--warn);
+}
+
+.dot-OffShift {
+  background: var(--border-strong);
+}
+
+.dot-alert {
+  background: var(--down);
+}
+
+.location-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}

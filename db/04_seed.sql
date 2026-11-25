@@ -88,6 +88,12 @@ INSERT INTO "Nurse" ("NurseID", "FullName", "BadgeID", "PinHash", "Role", "Statu
 ('NURSE-05', 'Saule Bekova', 'BADGE-1005', crypt('5555', gen_salt('bf')), 'Nurse', 'OffShift'),
 ('NURSE-10', 'Gulnara Akhmetova', 'BADGE-1010', crypt('1010', gen_salt('bf')), 'HeadNurse', 'Available');
 
+-- Where the nurses on shift are right now (decisions.md, record 14); the head nurse
+-- has not passed a ward door yet (location unknown), NURSE-05 is off shift
+UPDATE "Nurse" SET "CurrentWardID" = v."WardID", "LocationAt" = CURRENT_TIMESTAMP
+FROM (VALUES ('NURSE-01', 101), ('NURSE-02', 101), ('NURSE-03', 103), ('NURSE-04', 104)) AS v("NurseID", "WardID")
+WHERE "Nurse"."NurseID" = v."NurseID";
+
 -- Other staff (admissions, public staff)
 INSERT INTO "StaffAccount" ("AccountID", "FullName", "BadgeID", "PinHash", "Role", "IsActive") VALUES
 ('ADM-01', 'Erlan Abenov', 'BADGE-2001', crypt('2001', gen_salt('bf')), 'Admissions', TRUE),

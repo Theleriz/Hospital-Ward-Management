@@ -56,6 +56,12 @@ export const WardsIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const MapIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14" />
+  </Icon>
+);
+
 export const SimulatorIcon = (p: IconProps) => (
   <Icon {...p}>
     <rect x="3" y="4" width="18" height="13" rx="2" />

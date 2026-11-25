@@ -422,13 +422,59 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-    UPDATE "Nurse" SET "Status" = p_Status WHERE "NurseID" = p_NurseID;
+    -- Going off shift forgets where the nurse was (decisions.md, record 14)
+    UPDATE "Nurse"
+    SET "Status" = p_Status,
+        "CurrentWardID" = CASE WHEN p_Status = 'OffShift' THEN NULL ELSE "CurrentWardID" END,
+        "LocationAt" = CASE WHEN p_Status = 'OffShift' THEN NULL ELSE "LocationAt" END
+    WHERE "NurseID" = p_NurseID;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
     END IF;
 
     RAISE NOTICE 'Nurse % is now %.', p_NurseID, p_Status;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 7a: sp_SetNurseLocation
+-- Business Logic: where a nurse is right now (decisions.md, record 14).
+-- Called when the door reader of a ward reads the nurse's badge (the device
+-- simulator plays the reader) or when the nurse picks the ward on the nurse post.
+-- NULL ward = location unknown. A nurse off shift has no location.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_SetNurseLocation(
+    p_NurseID VARCHAR,
+    p_WardID INT
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_NurseStatus VARCHAR(20);
+BEGIN
+    SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_NurseID FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
+    END IF;
+
+    IF v_NurseStatus = 'OffShift' AND p_WardID IS NOT NULL THEN
+        RAISE EXCEPTION 'Nurse % is off shift.', p_NurseID;
+    END IF;
+
+    IF p_WardID IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "Ward" WHERE "WardID" = p_WardID) THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    UPDATE "Nurse"
+    SET "CurrentWardID" = p_WardID,
+        "LocationAt" = CASE WHEN p_WardID IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END
+    WHERE "NurseID" = p_NurseID;
+
+    RAISE NOTICE 'Nurse % is now in Ward ID %.', p_NurseID, p_WardID;
 END;
 $$;
 

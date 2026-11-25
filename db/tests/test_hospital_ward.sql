@@ -542,6 +542,56 @@ CALL pg_temp.expect_error('set status: unknown nurse is rejected', $q$
     CALL sp_SetNurseStatus('NURSE-99', 'Busy') $q$,
     'Nurse NURSE-99 does not exist%');
 
+-- Nurse location (decisions.md, record 14)
+CALL pg_temp.expect_true('seed: nurses on shift are in their wards, head nurse location unknown', $q$
+    SELECT array_agg(ROW("NurseID", "CurrentWardID")::TEXT ORDER BY "NurseID")
+           = ARRAY['(NURSE-01,101)', '(NURSE-02,101)', '(NURSE-03,103)', '(NURSE-04,104)', '(NURSE-05,)', '(NURSE-10,)']
+    FROM "Nurse" $q$);
+
+CALL pg_temp.expect_ok('door reader of ward 102 reads the badge of NURSE-04', $q$
+    CALL sp_SetNurseLocation('NURSE-04', 102) $q$);
+
+CALL pg_temp.expect_true('NURSE-04 is in ward 102 since just now', $q$
+    SELECT "CurrentWardID" = 102 AND "LocationAt" > CURRENT_TIMESTAMP - INTERVAL '5 seconds'
+    FROM "Nurse" WHERE "NurseID" = 'NURSE-04' $q$);
+
+CALL pg_temp.expect_error('location: unknown ward is rejected', $q$
+    CALL sp_SetNurseLocation('NURSE-04', 999) $q$,
+    'Ward ID 999 does not exist%');
+
+CALL pg_temp.expect_error('location: unknown nurse is rejected', $q$
+    CALL sp_SetNurseLocation('NURSE-99', 101) $q$,
+    'Nurse NURSE-99 does not exist%');
+
+CALL pg_temp.expect_error('location: off-shift nurse has no location', $q$
+    CALL sp_SetNurseLocation('NURSE-05', 104) $q$,
+    'Nurse NURSE-05 is off shift%');
+
+CALL pg_temp.expect_error('location: ward and time go together', $q$
+    UPDATE "Nurse" SET "LocationAt" = NULL WHERE "NurseID" = 'NURSE-04' $q$,
+    '%violates check constraint "CK_Nurse_Location"%');
+
+CALL pg_temp.expect_ok('going off shift forgets the location', $q$
+    CALL sp_SetNurseStatus('NURSE-04', 'OffShift') $q$);
+
+CALL pg_temp.expect_true('NURSE-04 off shift has no location', $q$
+    SELECT "CurrentWardID" IS NULL AND "LocationAt" IS NULL FROM "Nurse" WHERE "NurseID" = 'NURSE-04' $q$);
+
+CALL pg_temp.expect_ok('NURSE-04 back on shift', $q$
+    CALL sp_SetNurseStatus('NURSE-04', 'Available') $q$);
+
+CALL pg_temp.expect_ok('NURSE-04 at the door of ward 104 again', $q$
+    CALL sp_SetNurseLocation('NURSE-04', 104) $q$);
+
+CALL pg_temp.expect_ok('NULL ward = location unknown', $q$
+    CALL sp_SetNurseLocation('NURSE-03', NULL) $q$);
+
+CALL pg_temp.expect_true('NURSE-03 location unknown', $q$
+    SELECT "CurrentWardID" IS NULL AND "LocationAt" IS NULL FROM "Nurse" WHERE "NurseID" = 'NURSE-03' $q$);
+
+CALL pg_temp.expect_ok('NURSE-03 back in ward 103', $q$
+    CALL sp_SetNurseLocation('NURSE-03', 103) $q$);
+
 -- -----------------------------------------------------------------------------
 -- 9. sp_DischargePatient
 -- -----------------------------------------------------------------------------
@@ -668,6 +718,21 @@ CALL pg_temp.expect_ok('nurse can acknowledge alerts',
 
 CALL pg_temp.expect_ok('nurse can change own status',
     $q$ CALL sp_SetNurseStatus('NURSE-02', 'Busy') $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_ok('nurse can mark where she or he is (nurse post)',
+    $q$ CALL sp_SetNurseLocation('NURSE-02', 101) $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_ok('nurse can see where nurses are (ward map)',
+    $q$ SELECT "NurseID", "Status", "CurrentWardID", "LocationAt" FROM "Nurse" $q$, 'medbase_nurse');
+
+CALL pg_temp.expect_ok('alert service can record a door badge reading',
+    $q$ CALL sp_SetNurseLocation('NURSE-03', 103) $q$, 'medbase_alert_service');
+
+CALL pg_temp.expect_error('admissions cannot change where a nurse is',
+    $q$ CALL sp_SetNurseLocation('NURSE-03', 101) $q$, 'permission denied%', 'medbase_admissions');
+
+CALL pg_temp.expect_error('public staff cannot change where a nurse is',
+    $q$ CALL sp_SetNurseLocation('NURSE-03', 101) $q$, 'permission denied%', 'medbase_public_staff');
 
 CALL pg_temp.expect_error('nurse cannot change alerts directly',
     $q$ UPDATE "WardAlert" SET "Status" = 'PENDING' WHERE "AlertID" = 'ALT-1005' $q$,

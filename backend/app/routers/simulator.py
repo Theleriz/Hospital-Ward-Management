@@ -1,4 +1,5 @@
-"""Device simulator for demos (T-26): stands in for patient monitors and call buttons.
+"""Device simulator for demos (T-26): stands in for patient monitors and call buttons,
+and for the badge readers at ward doors that report where a nurse is (decisions.md, record 14).
 
 The alert is created as the alert service (medbase_alert_service), the same way a
 real device integration would. The backend picks the nurse of the ward; the
@@ -127,3 +128,39 @@ def raise_alert(body: DeviceAlert, conn: Connection = Depends(service_db)) -> Ra
         ).fetchone()
 
     return RaisedAlert(alert_id=row[0], assigned_nurse_id=nurse)
+
+
+# --- Door badge readers (decisions.md, record 14) -------------------------------------------
+
+class SimulatorNurse(BaseModel):
+    nurse_id: str
+    full_name: str
+    status: str
+    current_ward_id: int | None
+
+
+class BadgeScan(BaseModel):
+    nurse_id: str = Field(max_length=20)
+    ward_id: int
+
+
+@router.get("/nurses")
+def list_nurses(conn: Connection = Depends(service_db)) -> list[SimulatorNurse]:
+    rows = conn.execute(
+        'SELECT "NurseID", "FullName", "Status", "CurrentWardID" FROM "Nurse" ORDER BY "NurseID"'
+    ).fetchall()
+    return [SimulatorNurse(nurse_id=r[0], full_name=r[1], status=r[2], current_ward_id=r[3]) for r in rows]
+
+
+@router.post("/badge-scan", status_code=status.HTTP_204_NO_CONTENT)
+def badge_scan(body: BadgeScan, conn: Connection = Depends(service_db)) -> None:
+    """The reader at the door of `ward_id` read the badge of `nurse_id`: she or he is there now."""
+    nurse = conn.execute('SELECT "Status" FROM "Nurse" WHERE "NurseID" = %s', (body.nurse_id,)).fetchone()
+    if nurse is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Медсестра {body.nurse_id} не найдена")
+    if conn.execute('SELECT 1 FROM "Ward" WHERE "WardID" = %s', (body.ward_id,)).fetchone() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Палата {body.ward_id} не найдена")
+    if nurse[0] == "OffShift":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Медсестра не на смене")
+    with database_rules():
+        conn.execute("CALL sp_SetNurseLocation(%s, %s)", (body.nurse_id, body.ward_id))

@@ -5,12 +5,15 @@ import {
   ApiError,
   getAlerts,
   getMyNurse,
+  getWards,
+  setMyLocation,
   setMyStatus,
   type Alert,
   type AlertBoard,
   type NurseInfo,
   type NurseStatus,
   type Priority,
+  type Ward,
 } from "./api";
 import { SoundOffIcon, SoundOnIcon } from "./icons";
 import { playAlertSound } from "./sound";
@@ -62,8 +65,11 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
   const soundRef = useRef(sound);
   soundRef.current = sound;
 
+  const [wards, setWards] = useState<Ward[]>([]);
+
   useEffect(() => {
     getMyNurse().then(setNurse).catch(() => undefined);
+    getWards().then(setWards).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -113,6 +119,16 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
     }
   }
 
+  // Where I am right now: escalation calls the nearest nurse (decisions.md, record 14)
+  async function changeLocation(value: string) {
+    try {
+      setNurse(await setMyLocation(value === "" ? null : Number(value)));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Сервер недоступен");
+    }
+  }
+
   async function acknowledge(alert: Alert) {
     try {
       await acknowledgeAlert(alert.alert_id);
@@ -153,6 +169,21 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
               </button>
             ))}
           </div>
+          <label className="location-picker hint">
+            Я сейчас в палате
+            <select
+              value={nurse?.current_ward_id ?? ""}
+              disabled={!nurse || nurse.status === "OffShift"}
+              onChange={(e) => changeLocation(e.target.value)}
+            >
+              <option value="">— неизвестно —</option>
+              {wards.map((w) => (
+                <option key={w.ward_id} value={w.ward_id}>
+                  {w.ward_id} · {w.ward_name} (этаж {w.floor})
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="button" className="secondary toggle" onClick={toggleSound} aria-pressed={sound}>
             {sound ? <SoundOnIcon size={18} /> : <SoundOffIcon size={18} />}
             {sound ? "Звук включён" : "Звук выключен"}

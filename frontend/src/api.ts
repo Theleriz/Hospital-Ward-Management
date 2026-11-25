@@ -193,6 +193,10 @@ export type NurseInfo = {
   role: Role;
   status: NurseStatus;
   wards: { ward_id: number; ward_name: string; is_primary: boolean }[];
+  // Where she or he is right now (decisions.md, record 14)
+  current_ward_id: number | null;
+  current_ward_name: string | null;
+  location_at: string | null;
 };
 
 export function getAlerts(): Promise<AlertBoard> {
@@ -209,6 +213,52 @@ export function getMyNurse(): Promise<NurseInfo> {
 
 export function setMyStatus(status: NurseStatus): Promise<NurseInfo> {
   return request("/api/nurses/me/status", { method: "PUT", body: JSON.stringify({ status }) });
+}
+
+export function setMyLocation(wardId: number | null): Promise<NurseInfo> {
+  return request("/api/nurses/me/location", { method: "PUT", body: JSON.stringify({ ward_id: wardId }) });
+}
+
+// --- Ward map (decisions.md, record 14) ------------------------------------------------
+
+export type MapNurse = {
+  nurse_id: string;
+  full_name: string;
+  role: Role;
+  status: NurseStatus;
+  open_calls: number;
+  location_at: string | null;
+};
+
+export type MapAlert = {
+  alert_id: string;
+  priority: Priority;
+  status: "PENDING" | "ESCALATED";
+  age_seconds: number;
+  assigned_nurse_name: string | null;
+  escalated_to_id: string | null;
+  escalated_to_name: string | null;
+};
+
+export type MapWard = {
+  ward_id: number;
+  ward_name: string;
+  ward_type: string;
+  capacity: number;
+  occupied: number;
+  nurses_here: MapNurse[];
+  alerts: MapAlert[];
+};
+
+export type WardMapData = {
+  floors: { floor: number; wards: MapWard[] }[];
+  location_unknown: MapNurse[];
+  off_shift: MapNurse[];
+  location_fresh_minutes: number;
+};
+
+export function getWardMap(): Promise<WardMapData> {
+  return request("/api/map");
 }
 
 // --- Device simulator (demo only) ------------------------------------------------------
@@ -234,6 +284,25 @@ export function getSimulatorWards(): Promise<SimulatorWard[]> {
 
 export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
+}
+
+export type SimulatorNurse = {
+  nurse_id: string;
+  full_name: string;
+  status: NurseStatus;
+  current_ward_id: number | null;
+};
+
+export function getSimulatorNurses(): Promise<SimulatorNurse[]> {
+  return request("/api/simulator/nurses");
+}
+
+/** The badge reader at the door of a ward read a nurse's badge. */
+export function scanBadge(nurseId: string, wardId: number): Promise<void> {
+  return request("/api/simulator/badge-scan", {
+    method: "POST",
+    body: JSON.stringify({ nurse_id: nurseId, ward_id: wardId }),
+  });
 }
 
 // --- Head nurse report (UC-8) ------------------------------------------------------------

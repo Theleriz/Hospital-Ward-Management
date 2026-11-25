@@ -66,6 +66,7 @@ REVOKE EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARC
 REVOKE EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) FROM PUBLIC;
 REVOKE EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) FROM PUBLIC;
 REVOKE EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) FROM PUBLIC;
+REVOKE EXECUTE ON PROCEDURE sp_SetNurseLocation(VARCHAR, INT) FROM PUBLIC;
 
 -- Doctors & admissions staff
 GRANT SELECT, INSERT, UPDATE ON "Patient", "Admission" TO medbase_admissions;
@@ -81,10 +82,12 @@ GRANT SELECT ON "vw_WardCapacity" TO medbase_public_staff;
 -- Nurses: read-only access to alerts and the nurse list (without PIN hashes);
 -- the patient's name is visible so the nurse knows whom the alert is about
 GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment", "vw_WardCapacity" TO medbase_nurse;
-GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_nurse;
+GRANT SELECT ("NurseID", "FullName", "Role", "Status", "CurrentWardID", "LocationAt") ON "Nurse" TO medbase_nurse;
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) TO medbase_nurse;
+-- A nurse marks where she or he is on the nurse post (decisions.md, record 14)
+GRANT EXECUTE ON PROCEDURE sp_SetNurseLocation(VARCHAR, INT) TO medbase_nurse;
 -- A nurse who was called for an alert keeps seeing it after the next escalation
 -- (decisions.md, record 13): only who was called, not the full journal with times
 GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_nurse;
@@ -96,13 +99,15 @@ GRANT SELECT ON "vw_AlertResponse", "AlertEvent" TO medbase_head_nurse;
 -- Alert service: reads what it needs to choose a nurse and find overdue alerts.
 -- The device simulator shows which patient lies in which ward (name only).
 GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment" TO medbase_alert_service;
-GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_alert_service;
+GRANT SELECT ("NurseID", "FullName", "Role", "Status", "CurrentWardID", "LocationAt") ON "Nurse" TO medbase_alert_service;
 GRANT SELECT ("PatientID", "WardID", "Status") ON "Admission" TO medbase_alert_service;
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_alert_service;
 -- Who was already called for an alert, so nobody is called twice (decisions.md, record 12)
 GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR, VARCHAR) TO medbase_alert_service;
 GRANT EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) TO medbase_alert_service;
+-- Door badge readers (played by the device simulator) report where a nurse is
+GRANT EXECUTE ON PROCEDURE sp_SetNurseLocation(VARCHAR, INT) TO medbase_alert_service;
 
 -- Private verifier; 06_login_security.sql grants only the throttled entry point.
 REVOKE EXECUTE ON FUNCTION fn_AuthenticateStaff(VARCHAR, VARCHAR) FROM PUBLIC;

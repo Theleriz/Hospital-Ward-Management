@@ -65,6 +65,10 @@ class Nurse(BaseModel):
     role: Role
     status: NurseStatus
     wards: list[Ward]
+    # Where she or he is right now (decisions.md, record 14); None = unknown
+    current_ward_id: int | None
+    current_ward_name: str | None
+    location_at: datetime | None
 
 
 class StatusChange(BaseModel):
@@ -132,7 +136,10 @@ def get_alert(conn: Connection, alert_id: str, me: str) -> Alert | None:
 
 def get_nurse(conn: Connection, nurse_id: str) -> Nurse:
     row = conn.execute(
-        'SELECT "NurseID", "FullName", "Role", "Status" FROM "Nurse" WHERE "NurseID" = %s', (nurse_id,)
+        """SELECT n."NurseID", n."FullName", n."Role", n."Status", n."CurrentWardID", w."WardName", n."LocationAt"
+           FROM "Nurse" n LEFT JOIN "Ward" w ON w."WardID" = n."CurrentWardID"
+           WHERE n."NurseID" = %s""",
+        (nurse_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Медсестра не найдена")
@@ -145,6 +152,7 @@ def get_nurse(conn: Connection, nurse_id: str) -> Nurse:
     return Nurse(
         nurse_id=row[0], full_name=row[1], role=Role(row[2]), status=row[3],
         wards=[Ward(ward_id=w[0], ward_name=w[1], is_primary=w[2]) for w in wards],
+        current_ward_id=row[4], current_ward_name=row[5], location_at=row[6],
     )
 
 
@@ -206,4 +214,28 @@ def set_status(
 ) -> Nurse:
     with database_rules():
         conn.execute("CALL sp_SetNurseStatus(%s, %s)", (user.account_id, body.status))
+    return get_nurse(conn, user.account_id)
+
+
+class LocationChange(BaseModel):
+    # None = "I left the ward" (location unknown)
+    ward_id: int | None
+
+
+@router.put("/nurses/me/location")
+def set_location(
+    body: LocationChange, user: User = Depends(nurse_user), conn: Connection = Depends(nurse_db)
+) -> Nurse:
+    """The nurse marks the ward she or he is in (decisions.md, record 14).
+
+    The door badge reader does the same (device simulator, /api/simulator/badge-scan).
+    """
+    if body.ward_id is not None and conn.execute(
+        'SELECT 1 FROM "Ward" WHERE "WardID" = %s', (body.ward_id,)
+    ).fetchone() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Палата {body.ward_id} не найдена")
+    if body.ward_id is not None and nurse_status(conn, user.account_id) == "OffShift":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Вы не на смене: сначала смените статус")
+    with database_rules():
+        conn.execute("CALL sp_SetNurseLocation(%s, %s)", (user.account_id, body.ward_id))
     return get_nurse(conn, user.account_id)

@@ -17,6 +17,7 @@ DROP PROCEDURE IF EXISTS sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR
 DROP PROCEDURE IF EXISTS sp_EscalateAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_AcknowledgeAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_SetNurseStatus(VARCHAR, VARCHAR);
+DROP PROCEDURE IF EXISTS sp_SetNurseLocation(VARCHAR, INT);
 DROP FUNCTION IF EXISTS fn_AuthenticateStaff(VARCHAR, VARCHAR);
 DROP FUNCTION IF EXISTS fn_LoginStaff(VARCHAR, VARCHAR, INTEGER, INTEGER);
 DROP TABLE IF EXISTS "LoginThrottle";
@@ -87,7 +88,13 @@ CREATE TABLE "Nurse" (
     "BadgeID" VARCHAR(32) NOT NULL UNIQUE,
     "PinHash" TEXT NOT NULL CONSTRAINT "CK_Nurse_PinIsBcrypt" CHECK ("PinHash" ~ '^\$2[aby]\$\d{2}\$.{53}$'),
     "Role" VARCHAR(20) NOT NULL DEFAULT 'Nurse' CHECK ("Role" IN ('Nurse', 'HeadNurse')),
-    "Status" VARCHAR(20) NOT NULL DEFAULT 'OffShift' CHECK ("Status" IN ('Available', 'Busy', 'OffShift'))
+    "Status" VARCHAR(20) NOT NULL DEFAULT 'OffShift' CHECK ("Status" IN ('Available', 'Busy', 'OffShift')),
+    -- Where the nurse is right now: the ward whose door reader last read her or his badge
+    -- (or the ward chosen on the nurse post). Escalation calls the nearest nurse
+    -- (decisions.md, record 14). NULL = unknown.
+    "CurrentWardID" INT REFERENCES "Ward"("WardID") ON DELETE RESTRICT,
+    "LocationAt" TIMESTAMPTZ,
+    CONSTRAINT "CK_Nurse_Location" CHECK (("CurrentWardID" IS NULL) = ("LocationAt" IS NULL))
 );
 
 -- Table: NurseAssignment (which nurses work in which ward; shifts come from seed data)

@@ -15,6 +15,7 @@ import {
   AdmissionsIcon,
   LogoMark,
   LogoutIcon,
+  MapIcon,
   MoonIcon,
   PostIcon,
   ReportIcon,
@@ -28,10 +29,11 @@ import ReportPage from "./ReportPage";
 import SimulatorPage from "./SimulatorPage";
 import { useTheme } from "./theme";
 import WardBoard from "./WardBoard";
+import WardMap from "./WardMap";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "post" | "report" | "wards" | "simulator";
+type Page = "admissions" | "post" | "map" | "report" | "wards" | "simulator";
 
 type PageInfo = {
   label: string;
@@ -52,6 +54,11 @@ const PAGE_INFO: Record<Page, PageInfo> = {
       role === "HeadNurse"
         ? "Все оповещения отделения в реальном времени"
         : "Оповещения ваших палат в реальном времени",
+  },
+  map: {
+    label: "Карта отделения",
+    icon: MapIcon,
+    description: () => "Где медсёстры сейчас, их статус и палаты с вызовом",
   },
   report: {
     label: "Отчёт старшей медсестры",
@@ -74,8 +81,8 @@ const PAGE_INFO: Record<Page, PageInfo> = {
 const PAGES: Record<Role, Page[]> = {
   Admissions: ["admissions", "wards"],
   PublicStaff: ["wards"],
-  Nurse: ["post", "wards", "simulator"],
-  HeadNurse: ["report", "post", "wards", "simulator"],
+  Nurse: ["post", "map", "wards", "simulator"],
+  HeadNurse: ["report", "post", "map", "wards", "simulator"],
 };
 
 export default function App() {
@@ -186,6 +193,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
 
         {page === "admissions" && <AdmissionsPage />}
         {page === "post" && <NursePost headNurse={user.role === "HeadNurse"} />}
+        {page === "map" && <WardMap />}
         {page === "report" && <ReportPage />}
         {page === "wards" && <WardBoard />}
         {page === "simulator" && <SimulatorPage />}
