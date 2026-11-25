@@ -66,6 +66,10 @@ REVOKE EXECUTE ON PROCEDURE sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARC
 REVOKE EXECUTE ON PROCEDURE sp_EscalateAlert(VARCHAR, VARCHAR) FROM PUBLIC;
 REVOKE EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) FROM PUBLIC;
 REVOKE EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) FROM PUBLIC;
+REVOKE EXECUTE ON PROCEDURE sp_AssignWardNurse(INT, VARCHAR, BOOLEAN, VARCHAR, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON PROCEDURE sp_RemoveAdditionalNurse(INT, VARCHAR, VARCHAR, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON PROCEDURE sp_AutoAssignPrimaryNurse(INT, VARCHAR, TEXT, VARCHAR) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION fn_GetBestNurseForWard(INT, VARCHAR) FROM PUBLIC;
 
 -- Doctors & admissions staff
 GRANT SELECT, INSERT, UPDATE ON "Patient", "Admission" TO medbase_admissions;
@@ -92,6 +96,11 @@ GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_nurs
 -- Head nurse: the response-time report and the full alert journal (UC-8, FR-31);
 -- ward nurses do not get them
 GRANT SELECT ON "vw_AlertResponse", "AlertEvent" TO medbase_head_nurse;
+GRANT SELECT ON "NurseAssignmentLog" TO medbase_head_nurse;
+GRANT EXECUTE ON FUNCTION fn_GetBestNurseForWard(INT, VARCHAR) TO medbase_head_nurse, medbase_alert_service;
+GRANT EXECUTE ON PROCEDURE sp_AssignWardNurse(INT, VARCHAR, BOOLEAN, VARCHAR, TEXT) TO medbase_head_nurse;
+GRANT EXECUTE ON PROCEDURE sp_RemoveAdditionalNurse(INT, VARCHAR, VARCHAR, TEXT) TO medbase_head_nurse;
+GRANT EXECUTE ON PROCEDURE sp_AutoAssignPrimaryNurse(INT, VARCHAR, TEXT, VARCHAR) TO medbase_head_nurse, medbase_alert_service;
 
 -- Alert service: reads what it needs to choose a nurse and find overdue alerts.
 -- The device simulator shows which patient lies in which ward (name only).

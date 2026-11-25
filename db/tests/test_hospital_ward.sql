@@ -812,5 +812,99 @@ CALL pg_temp.expect_true('backend role can switch to every user role but inherit
                   'medbase_alert_service']) r $q$);
 
 -- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- 12. Ward nurse assignments, best-nurse algorithm & audit log (T-51)
+-- -----------------------------------------------------------------------------
+CALL pg_temp.expect_error('cannot delete the primary nurse of a ward directly', $q$
+    DELETE FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary" $q$,
+    'Ward ID 104 must have exactly one primary nurse%');
+
+CALL pg_temp.expect_error('cannot demote the primary nurse directly without replacement', $q$
+    UPDATE "NurseAssignment" SET "IsPrimary" = FALSE WHERE "WardID" = 101 AND "IsPrimary" $q$,
+    'Ward ID 101 must have exactly one primary nurse%');
+
+CALL pg_temp.expect_error('manual assignment requires ChangedByNurseID', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-03', FALSE, NULL, 'Missing actor') $q$,
+    'ChangedByNurseID is required%');
+
+CALL pg_temp.expect_error('head nurse cannot demote primary nurse via sp_AssignWardNurse', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-01', FALSE, 'NURSE-10', 'Invalid demote') $q$,
+    'Cannot demote primary nurse NURSE-01 of Ward ID 101 without assigning a new primary nurse first%');
+
+CALL pg_temp.expect_error('head nurse cannot remove primary nurse via sp_RemoveAdditionalNurse', $q$
+    CALL sp_RemoveAdditionalNurse(101, 'NURSE-01', 'NURSE-10', 'Invalid remove') $q$,
+    'Cannot remove primary nurse NURSE-01 from Ward ID 101%');
+
+CALL pg_temp.expect_error('off-shift nurse cannot be assigned to a ward', $q$
+    CALL sp_AssignWardNurse(104, 'NURSE-05', TRUE, 'NURSE-10', 'Off-shift test') $q$,
+    'Nurse NURSE-05 is off shift%');
+
+-- Head nurse assigns NURSE-03 as additional nurse to Ward 101, then swaps primary nurse to NURSE-02
+CALL pg_temp.expect_ok('head nurse assigns additional nurse NURSE-03 to Ward 101', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-03', FALSE, 'NURSE-10', 'Extra coverage for ICU') $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_ok('head nurse replaces primary nurse of Ward 101 with NURSE-02', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-02', TRUE, 'NURSE-10', 'Shift rotation') $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_true('Ward 101 still has exactly one primary nurse (NURSE-02), NURSE-01 kept as additional', $q$
+    SELECT (SELECT COUNT(*) FROM "NurseAssignment" WHERE "WardID" = 101 AND "IsPrimary") = 1
+       AND (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 101 AND "IsPrimary") = 'NURSE-02'
+       AND EXISTS (SELECT 1 FROM "NurseAssignment"
+                   WHERE "WardID" = 101 AND "NurseID" = 'NURSE-01' AND NOT "IsPrimary") $q$);
+
+-- Existing alerts stay with NURSE-01; new alerts route to the new primary nurse NURSE-02
+CALL pg_temp.expect_ok('new alert in Ward 101 goes to new primary nurse NURSE-02', $q$
+    CALL sp_RaiseAlert(101, 1, 'MONITOR', 'HIGH', 'Post-handoff alert', 'NURSE-02', NULL) $q$);
+
+CALL pg_temp.expect_true('seed ALT-1001 stayed with NURSE-01 while new alert went to NURSE-02', $q$
+    SELECT (SELECT "AssignedNurseID" FROM "WardAlert" WHERE "AlertID" = 'ALT-1001') = 'NURSE-01'
+       AND (SELECT "AssignedNurseID" FROM "WardAlert"
+            WHERE "Description" = 'Post-handoff alert') = 'NURSE-02' $q$);
+
+CALL pg_temp.expect_ok('head nurse removes additional nurse NURSE-03 from Ward 101', $q$
+    CALL sp_RemoveAdditionalNurse(101, 'NURSE-03', 'NURSE-10', 'Rotation finished') $q$,
+    'medbase_head_nurse');
+
+-- Best-nurse algorithm & auto-assignment (for Ward 104, excluding current primary NURSE-04)
+CALL pg_temp.expect_true('best-nurse algorithm ranks Available nurse with lowest load #1 for Ward 104', $q$
+    SELECT (SELECT "NurseID" FROM fn_GetBestNurseForWard(104, 'NURSE-04') WHERE "Rank" = 1) = 'NURSE-03' $q$);
+
+CALL pg_temp.expect_ok('head nurse triggers auto-assignment for Ward 104', $q$
+    CALL sp_AutoAssignPrimaryNurse(104, 'NURSE-10', 'Emergency auto-cover', NULL) $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_true('Ward 104 primary nurse is now NURSE-03 and audit log recorded all 4 actions', $q$
+    SELECT (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") = 'NURSE-03'
+       AND (SELECT array_agg("Action"::TEXT ORDER BY "LogID") FROM "NurseAssignmentLog")
+           = ARRAY['ASSIGN_ADDITIONAL', 'ASSIGN_PRIMARY', 'REMOVE_ADDITIONAL', 'AUTO_ASSIGN_PRIMARY'] $q$);
+
+-- Automatic handoff when primary nurse goes OffShift
+CALL pg_temp.expect_ok('primary nurse NURSE-03 of Ward 104 goes OffShift -> auto handoff', $q$
+    CALL sp_SetNurseStatus('NURSE-03', 'OffShift') $q$);
+
+CALL pg_temp.expect_true('Ward 104 automatically promoted an on-shift primary nurse after OffShift', $q$
+    SELECT (SELECT COUNT(*) FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") = 1
+       AND (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") <> 'NURSE-03' $q$);
+
+-- Security & append-only checks on T-51 objects
+CALL pg_temp.expect_error('ward nurse cannot assign ward nurses', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-01', TRUE, 'NURSE-01', 'Unauthorized') $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('ward nurse cannot read NurseAssignmentLog', $q$
+    SELECT * FROM "NurseAssignmentLog" $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('NurseAssignmentLog is append-only (UPDATE blocked)', $q$
+    UPDATE "NurseAssignmentLog" SET "Reason" = 'Tampered' WHERE "LogID" = 1 $q$,
+    'NurseAssignmentLog is append-only: UPDATE%');
+
+CALL pg_temp.expect_error('NurseAssignmentLog is append-only (DELETE blocked)', $q$
+    DELETE FROM "NurseAssignmentLog" WHERE "LogID" = 1 $q$,
+    'NurseAssignmentLog is append-only: DELETE%');
+
 DO $$ BEGIN RAISE INFO 'ALL TESTS PASSED'; END $$;
 ROLLBACK;

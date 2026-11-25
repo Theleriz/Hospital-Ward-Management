@@ -136,11 +136,16 @@ def test_alert_never_goes_back_to_the_assigned_nurse(client):
 
 
 def test_alert_without_a_nurse_on_shift_is_escalated_to_a_free_nurse(client):
-    # Ward 104: NURSE-04 goes off shift, NURSE-05 is off shift, so nobody gets the alert
+    # Nobody is on shift, so the T-51 handoff has nobody to give ward 104 to
+    # and the alert gets no nurse
+    set_status(["NURSE-01", "NURSE-02", "NURSE-03", "NURSE-10"], "OffShift")
     login(client, NURSE_4)
-    client.put("/api/nurses/me/status", json={"status": "OffShift"})
+    assert client.put("/api/nurses/me/status", json={"status": "OffShift"}).status_code == 200
     alert = raise_alert(client, NURSE_4, ward_id=104, patient_id=None, source="CALL_BUTTON")
     assert alert["assigned_nurse_id"] is None
+
+    # NURSE-01 (ward 101, same floor) comes back on shift before the 30 seconds run out
+    set_status(["NURSE-01"], "Available")
     make_old(alert["alert_id"], 60)
 
     assert escalate(client)[alert["alert_id"]] == "NURSE-01"
