@@ -18,6 +18,12 @@ DROP PROCEDURE IF EXISTS sp_RaiseAlert(INT, INT, VARCHAR, VARCHAR, TEXT, VARCHAR
 DROP PROCEDURE IF EXISTS sp_EscalateAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_AcknowledgeAlert(VARCHAR, VARCHAR);
 DROP PROCEDURE IF EXISTS sp_SetNurseStatus(VARCHAR, VARCHAR);
+DROP PROCEDURE IF EXISTS sp_AssignWardNurse(INT, VARCHAR, BOOLEAN, VARCHAR, TEXT);
+DROP PROCEDURE IF EXISTS sp_RemoveAdditionalNurse(INT, VARCHAR, VARCHAR, TEXT);
+DROP PROCEDURE IF EXISTS sp_AutoAssignPrimaryNurse(INT, VARCHAR, TEXT, VARCHAR);
+DROP FUNCTION IF EXISTS fn_GetBestNurseForWard(INT, VARCHAR);
+DROP TABLE IF EXISTS "NurseAssignmentLog" CASCADE;
+DROP FUNCTION IF EXISTS fn_NurseAssignmentLogIsAppendOnly();
 DROP FUNCTION IF EXISTS fn_AuthenticateStaff(VARCHAR, VARCHAR);
 DROP FUNCTION IF EXISTS fn_LoginStaff(VARCHAR, VARCHAR, INTEGER, INTEGER);
 DROP TABLE IF EXISTS "LoginThrottle";
@@ -25,6 +31,8 @@ DROP TABLE IF EXISTS "StaffAccount" CASCADE;
 DROP TABLE IF EXISTS "AlertEvent" CASCADE;
 DROP TABLE IF EXISTS "WardAlert" CASCADE;
 DROP TABLE IF EXISTS "NurseAssignment" CASCADE;
+-- After its table: the trigger on "NurseAssignment" depends on this function
+DROP FUNCTION IF EXISTS fn_NurseAssignmentRequirePrimary();
 DROP TABLE IF EXISTS "Nurse" CASCADE;
 DROP TABLE IF EXISTS "Admission" CASCADE;
 DROP TABLE IF EXISTS "Ward" CASCADE;
@@ -104,6 +112,79 @@ CREATE TABLE "NurseAssignment" (
 CREATE UNIQUE INDEX "UX_NurseAssignment_OnePrimaryPerWard"
     ON "NurseAssignment" ("WardID")
     WHERE "IsPrimary";
+
+-- Every ward must keep its primary nurse; removing or demoting a primary
+-- nurse is allowed only when another primary nurse takes her place.
+-- The check is a constraint trigger, checked immediately by default, so a
+-- direct DELETE/UPDATE that leaves a ward without a primary nurse fails at once.
+-- The swap procedures defer it for the two-step swap (demote old, promote new)
+-- and switch it back to IMMEDIATE right after, which runs the check there.
+CREATE FUNCTION fn_NurseAssignmentRequirePrimary()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Only removing or demoting a primary nurse can leave a ward without one
+    IF NOT OLD."IsPrimary" THEN
+        RETURN NULL;
+    END IF;
+
+    -- Allow full table clear during 04_seed.sql reload
+    IF NOT EXISTS (SELECT 1 FROM "NurseAssignment") THEN
+        RETURN NULL;
+    END IF;
+
+    -- Check only the ward that lost its primary nurse: a new ward that has
+    -- no nurses assigned yet must not block changes in other wards.
+    IF NOT EXISTS (
+        SELECT 1 FROM "NurseAssignment"
+        WHERE "WardID" = OLD."WardID" AND "IsPrimary"
+    ) THEN
+        RAISE EXCEPTION 'Ward ID % must have exactly one primary nurse.', OLD."WardID";
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "TR_NurseAssignment_RequirePrimary"
+    AFTER UPDATE OF "IsPrimary" OR DELETE ON "NurseAssignment"
+    DEFERRABLE INITIALLY IMMEDIATE
+    FOR EACH ROW EXECUTE FUNCTION fn_NurseAssignmentRequirePrimary();
+
+-- Table: NurseAssignmentLog (append-only audit journal of ward nurse assignments, T-51)
+CREATE TABLE "NurseAssignmentLog" (
+    "LogID" BIGSERIAL PRIMARY KEY,
+    "WardID" INT NOT NULL REFERENCES "Ward"("WardID") ON DELETE RESTRICT,
+    "NurseID" VARCHAR(20) NOT NULL REFERENCES "Nurse"("NurseID") ON DELETE RESTRICT,
+    "PreviousPrimaryNurseID" VARCHAR(20) REFERENCES "Nurse"("NurseID") ON DELETE RESTRICT,
+    "Action" VARCHAR(30) NOT NULL CHECK ("Action" IN (
+        'ASSIGN_PRIMARY',
+        'ASSIGN_ADDITIONAL',
+        'REMOVE_ADDITIONAL',
+        'AUTO_ASSIGN_PRIMARY'
+    )),
+    "ChangedByNurseID" VARCHAR(20) REFERENCES "Nurse"("NurseID") ON DELETE RESTRICT,
+    "Reason" TEXT,
+    "ChangedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "CK_NurseAssignmentLog_Actor"
+        CHECK ("Action" = 'AUTO_ASSIGN_PRIMARY' OR "ChangedByNurseID" IS NOT NULL)
+);
+
+CREATE INDEX "IX_NurseAssignmentLog_Ward_Time" ON "NurseAssignmentLog" ("WardID", "ChangedAt" DESC);
+
+CREATE FUNCTION fn_NurseAssignmentLogIsAppendOnly()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'NurseAssignmentLog is append-only: % is not allowed.', TG_OP;
+END;
+$$;
+
+CREATE TRIGGER "TR_NurseAssignmentLog_AppendOnly"
+    BEFORE UPDATE OR DELETE ON "NurseAssignmentLog"
+    FOR EACH ROW EXECUTE FUNCTION fn_NurseAssignmentLogIsAppendOnly();
 
 -- Table: StaffAccount (logins of staff who are not nurses: admissions, other staff)
 -- Nurses log in with the badge and PIN stored in "Nurse"
