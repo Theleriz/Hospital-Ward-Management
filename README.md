@@ -80,6 +80,8 @@ BIS/
 - **[docs/testing/alert-timing-report.md](docs/testing/alert-timing-report.md)** — T-29: настоящий Chromium, 12 замеров доставки и первая/повторная эскалация: `bash scripts/check-alert-timing.sh`.
 - **[docs/sequence-diagrams.md](docs/sequence-diagrams.md)** — sequence-диаграммы входа, госпитализации, перевода, выписки, оповещений, эскалации и отчёта старшей медсестры (UC-1 — UC-8).
 - **[docs/testing/api-permissions-report.md](docs/testing/api-permissions-report.md)** — матрица прав реальных API и воспроизводимый отчёт Shynbulat Kazbek; запуск в отдельной тестовой БД: `bash scripts/check-api-permissions.sh`.
+- **[docs/doctor-accounts.md](docs/doctor-accounts.md)** — штатное создание учётки врача и явного назначения пациента.
+- **[docs/demo-review-workflow.md](docs/demo-review-workflow.md)** — повторяемая подготовка отдельной БД для демо очереди заявок.
 
 Документы добавляются так же, как код: через ветку от свежей `main` и PR. Подробнее — в [CONTRIBUTING.md](CONTRIBUTING.md#документы).
 

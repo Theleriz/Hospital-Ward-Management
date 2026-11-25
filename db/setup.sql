@@ -21,5 +21,7 @@
 \ir migrations/20261125_pews_pediatric_ward_types.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
+\echo '>> 20261125_add_paediatrics_ward.sql'
+\ir migrations/20261125_add_paediatrics_ward.sql
 
 \echo '>> Database ready'
