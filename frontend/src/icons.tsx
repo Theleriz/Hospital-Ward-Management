@@ -130,6 +130,14 @@ export const ArrowUpIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const AssignmentsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <path d="M4 10h16M10 4v16" />
+    <path d="m13 14.5 1.5 1.5 3-3" />
+  </Icon>
+);
+
 export const ReportIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M4 4v16h16" />
