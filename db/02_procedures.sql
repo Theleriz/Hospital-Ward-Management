@@ -406,8 +406,10 @@ $$;
 
 --------------------------------------------------------------------------------
 -- Procedure 7: sp_SetNurseStatus
--- Business Logic: a nurse switches between Available / Busy / OffShift
--- (Available nurses are escalation targets). Invalid statuses fail on the CHECK.
+-- Business Logic: a nurse switches between Available / Busy / OffShift.
+-- If a primary nurse switches to OffShift, the system automatically promotes
+-- the best on-shift candidate via fn_GetBestNurseForWard so no ward is left
+-- without an active primary nurse (T-51).
 --------------------------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE sp_SetNurseStatus(
     p_NurseID VARCHAR,
@@ -417,6 +419,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
+DECLARE
+    v_WardID INT;
+    v_ReplacementID VARCHAR(20);
 BEGIN
     UPDATE "Nurse" SET "Status" = p_Status WHERE "NurseID" = p_NurseID;
 
@@ -424,10 +429,31 @@ BEGIN
         RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
     END IF;
 
+    IF p_Status = 'OffShift' THEN
+        FOR v_WardID IN
+            SELECT "WardID"
+            FROM "NurseAssignment"
+            WHERE "NurseID" = p_NurseID AND "IsPrimary"
+            ORDER BY "WardID"
+        LOOP
+            SELECT "NurseID" INTO v_ReplacementID
+            FROM fn_GetBestNurseForWard(v_WardID, p_NurseID)
+            LIMIT 1;
+
+            IF v_ReplacementID IS NOT NULL THEN
+                CALL sp_AutoAssignPrimaryNurse(
+                    v_WardID,
+                    NULL,
+                    format('Automatic handoff: primary nurse %s switched to OffShift', p_NurseID),
+                    v_ReplacementID
+                );
+            END IF;
+        END LOOP;
+    END IF;
+
     RAISE NOTICE 'Nurse % is now %.', p_NurseID, p_Status;
 END;
 $$;
-
 --------------------------------------------------------------------------------
 -- Function 8: fn_AuthenticateStaff
 -- Login with badge + PIN (Lab 05; the badge reader types the badge ID).
@@ -453,4 +479,381 @@ AS $$
     SELECT s."AccountID", s."FullName", s."Role"
     FROM "StaffAccount" s
     WHERE s."BadgeID" = p_BadgeID AND s."IsActive" AND s."PinHash" = crypt(p_Pin, s."PinHash");
+$$;
+
+--------------------------------------------------------------------------------
+-- Function 9: fn_GetBestNurseForWard (T-51)
+-- Ranks on-shift nurses (Available before Busy; OffShift excluded) to find
+-- the optimal candidate for a ward by:
+--   1. Availability status (Available > Busy)
+--   2. Fewer active unacknowledged alerts (PENDING / ESCALATED)
+--   3. Fewer currently assigned wards
+--   4. Familiarity & proximity (already assigned to this ward > same floor > other)
+--   5. Regular ward Nurse before HeadNurse on exact ties
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_GetBestNurseForWard(
+    p_WardID INT,
+    p_ExcludeNurseID VARCHAR DEFAULT NULL
+)
+RETURNS TABLE (
+    "NurseID" VARCHAR,
+    "FullName" VARCHAR,
+    "Role" VARCHAR,
+    "Status" VARCHAR,
+    "ActiveAlerts" INT,
+    "AssignedWards" INT,
+    "Familiarity" VARCHAR,
+    "Rank" INT
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_TargetFloor INT;
+BEGIN
+    SELECT "FloorNum" INTO v_TargetFloor
+    FROM "Ward"
+    WHERE "WardID" = p_WardID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    RETURN QUERY
+    WITH nurse_metrics AS (
+        SELECT
+            n."NurseID",
+            n."FullName",
+            n."Role",
+            n."Status",
+            (
+                SELECT COUNT(*)::INT
+                FROM "WardAlert" wa
+                WHERE wa."Status" IN ('PENDING', 'ESCALATED')
+                  AND (
+                      (wa."Status" = 'PENDING' AND wa."AssignedNurseID" = n."NurseID")
+                      OR (wa."Status" = 'ESCALATED' AND COALESCE(wa."EscalatedToNurseID", wa."AssignedNurseID") = n."NurseID")
+                  )
+            ) AS active_alerts,
+            (
+                SELECT COUNT(*)::INT
+                FROM "NurseAssignment" na
+                WHERE na."NurseID" = n."NurseID"
+            ) AS assigned_wards,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM "NurseAssignment" na
+                    WHERE na."NurseID" = n."NurseID" AND na."WardID" = p_WardID
+                ) THEN 1
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM "NurseAssignment" na
+                    JOIN "Ward" w ON w."WardID" = na."WardID"
+                    WHERE na."NurseID" = n."NurseID" AND w."FloorNum" = v_TargetFloor
+                ) THEN 2
+                ELSE 3
+            END AS familiarity_tier
+        FROM "Nurse" n
+        WHERE n."Status" <> 'OffShift'
+          AND n."NurseID" IS DISTINCT FROM p_ExcludeNurseID
+    )
+    SELECT
+        m."NurseID",
+        m."FullName",
+        m."Role",
+        m."Status",
+        m.active_alerts,
+        m.assigned_wards,
+        CASE m.familiarity_tier
+            WHEN 1 THEN 'SAME_WARD'
+            WHEN 2 THEN 'SAME_FLOOR'
+            ELSE 'OTHER_FLOOR'
+        END::VARCHAR AS "Familiarity",
+        ROW_NUMBER() OVER (
+            ORDER BY
+                CASE m."Status" WHEN 'Available' THEN 1 ELSE 2 END ASC,
+                m.active_alerts ASC,
+                CASE m."Role" WHEN 'Nurse' THEN 1 ELSE 2 END ASC,
+                m.assigned_wards ASC,
+                m.familiarity_tier ASC,
+                m."NurseID" ASC
+        )::INT AS "Rank"
+    FROM nurse_metrics m
+    ORDER BY "Rank";
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 10: sp_AssignWardNurse (T-51)
+-- Head nurse assigns a nurse to a ward as primary (p_IsPrimary = TRUE) or
+-- additional (p_IsPrimary = FALSE). Enforces "exactly one primary nurse per
+-- ward": demoting the current primary nurse is rejected unless a new primary
+-- nurse is assigned in her place. Existing alerts keep their assigned nurse.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_AssignWardNurse(
+    p_WardID INT,
+    p_NurseID VARCHAR,
+    p_IsPrimary BOOLEAN,
+    p_ChangedByNurseID VARCHAR,
+    p_Reason TEXT DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_NurseStatus VARCHAR(20);
+    v_ActorRole VARCHAR(20);
+    v_PrevPrimaryID VARCHAR(20);
+    v_AlreadyAdditional BOOLEAN;
+BEGIN
+    PERFORM 1 FROM "Ward" WHERE "WardID" = p_WardID FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    SELECT "Status" INTO v_NurseStatus FROM "Nurse" WHERE "NurseID" = p_NurseID;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_NurseID;
+    END IF;
+
+    IF v_NurseStatus = 'OffShift' THEN
+        RAISE EXCEPTION 'Nurse % is off shift and cannot be assigned to Ward ID %.', p_NurseID, p_WardID;
+    END IF;
+
+    IF p_ChangedByNurseID IS NULL THEN
+        RAISE EXCEPTION 'ChangedByNurseID is required for manual ward assignment changes.';
+    END IF;
+
+    SELECT "Role" INTO v_ActorRole FROM "Nurse" WHERE "NurseID" = p_ChangedByNurseID;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_ChangedByNurseID;
+    END IF;
+    IF v_ActorRole <> 'HeadNurse' THEN
+        RAISE EXCEPTION 'Only a HeadNurse can change ward assignments (got %).', v_ActorRole;
+    END IF;
+
+    SELECT "NurseID" INTO v_PrevPrimaryID
+    FROM "NurseAssignment"
+    WHERE "WardID" = p_WardID AND "IsPrimary";
+
+    IF NOT p_IsPrimary THEN
+        IF v_PrevPrimaryID = p_NurseID THEN
+            RAISE EXCEPTION 'Cannot demote primary nurse % of Ward ID % without assigning a new primary nurse first.',
+                p_NurseID, p_WardID;
+        END IF;
+
+        SELECT EXISTS (
+            SELECT 1 FROM "NurseAssignment"
+            WHERE "WardID" = p_WardID AND "NurseID" = p_NurseID AND NOT "IsPrimary"
+        ) INTO v_AlreadyAdditional;
+
+        IF v_AlreadyAdditional THEN
+            RAISE NOTICE 'Nurse % is already an additional nurse in Ward ID %.', p_NurseID, p_WardID;
+            RETURN;
+        END IF;
+
+        INSERT INTO "NurseAssignment" ("NurseID", "WardID", "IsPrimary")
+        VALUES (p_NurseID, p_WardID, FALSE);
+
+        INSERT INTO "NurseAssignmentLog" (
+            "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
+        )
+        VALUES (
+            p_WardID, p_NurseID, v_PrevPrimaryID, 'ASSIGN_ADDITIONAL', p_ChangedByNurseID,
+            COALESCE(p_Reason, 'Assigned additional ward nurse')
+        );
+
+        RAISE NOTICE 'Nurse % assigned as additional nurse to Ward ID %.', p_NurseID, p_WardID;
+        RETURN;
+    END IF;
+
+    -- p_IsPrimary = TRUE
+    IF v_PrevPrimaryID = p_NurseID THEN
+        RAISE NOTICE 'Nurse % is already the primary nurse of Ward ID %.', p_NurseID, p_WardID;
+        RETURN;
+    END IF;
+
+    -- Atomic swap in a single statement so TR_NurseAssignment_RequirePrimary always holds
+    WITH demote AS (
+        UPDATE "NurseAssignment"
+        SET "IsPrimary" = FALSE
+        WHERE "WardID" = p_WardID AND "IsPrimary"
+    )
+    INSERT INTO "NurseAssignment" ("NurseID", "WardID", "IsPrimary")
+    VALUES (p_NurseID, p_WardID, TRUE)
+    ON CONFLICT ("NurseID", "WardID") DO UPDATE SET "IsPrimary" = TRUE;
+
+    INSERT INTO "NurseAssignmentLog" (
+        "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
+    )
+    VALUES (
+        p_WardID, p_NurseID, v_PrevPrimaryID, 'ASSIGN_PRIMARY', p_ChangedByNurseID,
+        COALESCE(p_Reason, format('Primary nurse changed from %s to %s', COALESCE(v_PrevPrimaryID, 'none'), p_NurseID))
+    );
+
+    RAISE NOTICE 'Nurse % is now the primary nurse of Ward ID %.', p_NurseID, p_WardID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 11: sp_RemoveAdditionalNurse (T-51)
+-- Removes a non-primary nurse from a ward. Rejects removing the primary nurse.
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_RemoveAdditionalNurse(
+    p_WardID INT,
+    p_NurseID VARCHAR,
+    p_ChangedByNurseID VARCHAR,
+    p_Reason TEXT DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_IsPrimary BOOLEAN;
+    v_ActorRole VARCHAR(20);
+    v_PrevPrimaryID VARCHAR(20);
+BEGIN
+    PERFORM 1 FROM "Ward" WHERE "WardID" = p_WardID FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    IF p_ChangedByNurseID IS NULL THEN
+        RAISE EXCEPTION 'ChangedByNurseID is required for manual ward assignment changes.';
+    END IF;
+
+    SELECT "Role" INTO v_ActorRole FROM "Nurse" WHERE "NurseID" = p_ChangedByNurseID;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % does not exist.', p_ChangedByNurseID;
+    END IF;
+    IF v_ActorRole <> 'HeadNurse' THEN
+        RAISE EXCEPTION 'Only a HeadNurse can change ward assignments (got %).', v_ActorRole;
+    END IF;
+
+    SELECT "IsPrimary" INTO v_IsPrimary
+    FROM "NurseAssignment"
+    WHERE "WardID" = p_WardID AND "NurseID" = p_NurseID;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Nurse % is not assigned to Ward ID %.', p_NurseID, p_WardID;
+    END IF;
+
+    IF v_IsPrimary THEN
+        RAISE EXCEPTION 'Cannot remove primary nurse % from Ward ID %; assign a replacement primary nurse first.',
+            p_NurseID, p_WardID;
+    END IF;
+
+    SELECT "NurseID" INTO v_PrevPrimaryID
+    FROM "NurseAssignment"
+    WHERE "WardID" = p_WardID AND "IsPrimary";
+
+    DELETE FROM "NurseAssignment"
+    WHERE "WardID" = p_WardID AND "NurseID" = p_NurseID AND NOT "IsPrimary";
+
+    INSERT INTO "NurseAssignmentLog" (
+        "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
+    )
+    VALUES (
+        p_WardID, p_NurseID, v_PrevPrimaryID, 'REMOVE_ADDITIONAL', p_ChangedByNurseID,
+        COALESCE(p_Reason, 'Removed additional ward nurse')
+    );
+
+    RAISE NOTICE 'Additional nurse % removed from Ward ID %.', p_NurseID, p_WardID;
+END;
+$$;
+
+--------------------------------------------------------------------------------
+-- Procedure 12: sp_AutoAssignPrimaryNurse (T-51)
+-- Selects the best on-shift candidate via fn_GetBestNurseForWard and assigns
+-- her as the primary nurse of p_WardID (used when the head nurse triggers auto-
+-- assignment or during an emergency / off-shift handoff).
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE sp_AutoAssignPrimaryNurse(
+    p_WardID INT,
+    p_ChangedByNurseID VARCHAR DEFAULT NULL,
+    p_Reason TEXT DEFAULT NULL,
+    INOUT p_AssignedNurseID VARCHAR DEFAULT NULL
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_PrevPrimaryID VARCHAR(20);
+    v_Best RECORD;
+    v_ActorRole VARCHAR(20);
+BEGIN
+    PERFORM 1 FROM "Ward" WHERE "WardID" = p_WardID FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Ward ID % does not exist.', p_WardID;
+    END IF;
+
+    IF p_ChangedByNurseID IS NOT NULL THEN
+        SELECT "Role" INTO v_ActorRole FROM "Nurse" WHERE "NurseID" = p_ChangedByNurseID;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Nurse % does not exist.', p_ChangedByNurseID;
+        END IF;
+        IF v_ActorRole <> 'HeadNurse' THEN
+            RAISE EXCEPTION 'Only a HeadNurse can trigger ward auto-assignment (got %).', v_ActorRole;
+        END IF;
+    END IF;
+
+    SELECT "NurseID" INTO v_PrevPrimaryID
+    FROM "NurseAssignment"
+    WHERE "WardID" = p_WardID AND "IsPrimary";
+
+    SELECT * INTO v_Best
+    FROM fn_GetBestNurseForWard(p_WardID, v_PrevPrimaryID)
+    LIMIT 1;
+
+    IF NOT FOUND THEN
+        SELECT * INTO v_Best
+        FROM fn_GetBestNurseForWard(p_WardID, NULL)
+        LIMIT 1;
+    END IF;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No on-shift nurse is available to assign to Ward ID %.', p_WardID;
+    END IF;
+
+    p_AssignedNurseID := v_Best."NurseID";
+
+    IF v_PrevPrimaryID = p_AssignedNurseID THEN
+        RAISE NOTICE 'Nurse % remains the best primary nurse for Ward ID %.', p_AssignedNurseID, p_WardID;
+        RETURN;
+    END IF;
+
+    WITH demote AS (
+        UPDATE "NurseAssignment"
+        SET "IsPrimary" = FALSE
+        WHERE "WardID" = p_WardID AND "IsPrimary"
+    )
+    INSERT INTO "NurseAssignment" ("NurseID", "WardID", "IsPrimary")
+    VALUES (p_AssignedNurseID, p_WardID, TRUE)
+    ON CONFLICT ("NurseID", "WardID") DO UPDATE SET "IsPrimary" = TRUE;
+
+    INSERT INTO "NurseAssignmentLog" (
+        "WardID", "NurseID", "PreviousPrimaryNurseID", "Action", "ChangedByNurseID", "Reason"
+    )
+    VALUES (
+        p_WardID,
+        p_AssignedNurseID,
+        v_PrevPrimaryID,
+        'AUTO_ASSIGN_PRIMARY',
+        p_ChangedByNurseID,
+        COALESCE(
+            p_Reason,
+            format(
+                'Auto-selected %s (status=%s, active_alerts=%s, wards=%s, proximity=%s)',
+                p_AssignedNurseID, v_Best."Status", v_Best."ActiveAlerts", v_Best."AssignedWards", v_Best."Familiarity"
+            )
+        )
+    );
+
+    RAISE NOTICE 'Auto-assigned primary nurse % to Ward ID %.', p_AssignedNurseID, p_WardID;
+END;
 $$;
