@@ -92,11 +92,18 @@ export async function getHealth(): Promise<Health> {
   return response.json();
 }
 
-export function login(badgeId: string, pin: string): Promise<User> {
+// pin=null: demo badge-only login, accepted only when the server has it switched on
+export function login(badgeId: string, pin: string | null): Promise<User> {
   return request("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ badge_id: badgeId, pin }),
+    body: JSON.stringify(pin === null ? { badge_id: badgeId } : { badge_id: badgeId, pin }),
   });
+}
+
+export type LoginOptions = { badge_only: boolean };
+
+export function getLoginOptions(): Promise<LoginOptions> {
+  return request("/api/auth/options");
 }
 
 export function logout(): Promise<void> {

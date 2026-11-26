@@ -27,6 +27,8 @@ services:
       MEDBASE_DATABASE_URL: postgresql://medbase_api:medbase_api@db:5432/hospital_ward
       # Development value; set a long random secret for any real installation
       MEDBASE_SESSION_SECRET: dev-only-session-secret-change-me
+      # DEMO ONLY: true lets the badge alone log in, without the PIN (decisions.md, record 16)
+      MEDBASE_DEMO_BADGE_LOGIN: ${MEDBASE_DEMO_BADGE_LOGIN:-false}
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:

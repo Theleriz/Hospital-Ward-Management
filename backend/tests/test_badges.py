@@ -85,3 +85,55 @@ def test_reissue_records_the_old_number_so_it_is_never_reused(client):
 def test_reissue_of_unknown_or_inactive_person_is_404(client, person):
     login(client, HEAD_NURSE)
     assert client.post(f"/api/badges/{person}/reissue").status_code == 404
+
+
+# --- Demo: the badge alone logs in (MEDBASE_DEMO_BADGE_LOGIN) ----------------------------
+
+@pytest.fixture
+def demo_badge_login(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "demo_badge_login", True)
+
+
+def test_without_demo_mode_the_pin_is_required(client):
+    assert client.get("/api/auth/options").json() == {"badge_only": False}
+    response = client.post("/api/auth/login", json={"badge_id": "BADGE-1001"})
+    assert response.status_code == 422
+    assert client.get("/api/auth/me").status_code == 401
+
+
+@pytest.mark.usefixtures("demo_badge_login")
+def test_demo_mode_logs_in_with_the_badge_alone(client):
+    assert client.get("/api/auth/options").json() == {"badge_only": True}
+    response = client.post("/api/auth/login", json={"badge_id": "BADGE-1010"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["account_id"] == "NURSE-10"
+    assert client.get("/api/auth/me").json()["role"] == "HeadNurse"
+
+
+@pytest.mark.usefixtures("demo_badge_login")
+def test_demo_mode_still_checks_the_pin_when_one_is_given(client):
+    assert client.post("/api/auth/login", json={"badge_id": "BADGE-1001", "pin": "9999"}).status_code == 401
+
+
+@pytest.mark.usefixtures("demo_badge_login")
+@pytest.mark.parametrize("badge", ["BADGE-9999", "BADGE-2002"])
+def test_demo_mode_refuses_unknown_and_inactive_badges(client, badge):
+    assert client.post("/api/auth/login", json={"badge_id": badge}).status_code == 401
+
+
+@pytest.mark.usefixtures("demo_badge_login")
+def test_demo_mode_refuses_a_reissued_badge(client):
+    login(client, HEAD_NURSE)
+    client.post("/api/badges/NURSE-01/reissue")
+
+    assert client.post("/api/auth/login", json={"badge_id": "BADGE-1001"}).status_code == 401
+
+
+@pytest.mark.usefixtures("demo_badge_login")
+def test_demo_mode_guessing_badges_still_locks(client):
+    for _ in range(5):
+        assert client.post("/api/auth/login", json={"badge_id": "BADGE-0000"}).status_code == 401
+    assert client.post("/api/auth/login", json={"badge_id": "BADGE-0000"}).status_code == 429

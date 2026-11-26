@@ -595,6 +595,11 @@ button.danger:where(:hover:not(:disabled)) {
   background: var(--down-bg);
 }
 
+.notice-warn {
+  color: var(--warn);
+  background: var(--warn-bg);
+}
+
 .badge {
   display: inline-block;
   border-radius: 999px;

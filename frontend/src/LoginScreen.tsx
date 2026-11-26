@@ -1,31 +1,66 @@
-import { useCallback, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
-import { ApiError, login, type User } from "./api";
+import { ApiError, getLoginOptions, login, type User } from "./api";
 import CameraScanner from "./CameraScanner";
 import { BadgeIcon, ClockIcon, LogoMark, PostIcon, WardsIcon } from "./icons";
 
 // Badge reader works like a keyboard: it types the badge ID and presses Enter.
 // Enter in the badge field moves on to the PIN instead of submitting the form.
-// Without a reader, the camera reads the barcode on the badge. The PIN is always
-// needed: a photo of a barcode must not be enough to log in.
+// Without a reader, the camera reads the barcode on the badge. The PIN is
+// needed: a photo of a barcode must not be enough to log in. Only in the demo
+// mode (MEDBASE_DEMO_BADGE_LOGIN on the server) the badge alone logs in at once.
 export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
   const [badgeId, setBadgeId] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [badgeOnly, setBadgeOnly] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
+  const badgeRef = useRef<HTMLInputElement>(null);
 
-  const onScanned = useCallback((text: string) => {
-    setBadgeId(text.slice(0, 32));
-    setError(null);
-    setScanning(false);
-    // After the dialog has closed and given focus back
-    requestAnimationFrame(() => pinRef.current?.focus());
+  useEffect(() => {
+    getLoginOptions()
+      .then((options) => setBadgeOnly(options.badge_only))
+      .catch(() => setBadgeOnly(false));
   }, []);
 
+  const signIn = useCallback(
+    async (badge: string, withPin: string | null) => {
+      setError(null);
+      setSubmitting(true);
+      try {
+        onLogin(await login(badge.trim(), withPin));
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Сервер недоступен");
+        setPin("");
+        (withPin === null ? badgeRef : pinRef).current?.focus();
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [onLogin],
+  );
+
+  const onScanned = useCallback(
+    (text: string) => {
+      const badge = text.slice(0, 32);
+      setBadgeId(badge);
+      setError(null);
+      setScanning(false);
+      if (badgeOnly) {
+        void signIn(badge, null);
+        return;
+      }
+      // After the dialog has closed and given focus back
+      requestAnimationFrame(() => pinRef.current?.focus());
+    },
+    [badgeOnly, signIn],
+  );
+
   function onBadgeKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
+    // In the demo mode Enter from the reader submits the form: there is no PIN
+    if (event.key === "Enter" && !badgeOnly) {
       event.preventDefault();
       pinRef.current?.focus();
     }
@@ -33,17 +68,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      onLogin(await login(badgeId.trim(), pin));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Сервер недоступен");
-      setPin("");
-      pinRef.current?.focus();
-    } finally {
-      setSubmitting(false);
-    }
+    await signIn(badgeId, badgeOnly ? null : pin);
   }
 
   return (
@@ -87,6 +112,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
           <label>
             Бейдж
             <input
+              ref={badgeRef}
               name="badge"
               value={badgeId}
               onChange={(e) => setBadgeId(e.target.value)}
@@ -103,6 +129,11 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
             Сканировать камерой
           </button>
 
+          {badgeOnly ? (
+            <p className="notice notice-warn" role="status">
+              Демо-режим: вход только по бейджу, без PIN. Не для реальной работы.
+            </p>
+          ) : (
           <label>
             PIN
             <input
@@ -120,6 +151,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
               required
             />
           </label>
+          )}
 
           {error && (
             <p className="notice notice-error" role="alert">

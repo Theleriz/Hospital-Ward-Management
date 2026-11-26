@@ -50,13 +50,24 @@ class LoginResult:
     retry_after: int = 0
 
 
-def authenticate(conn: Connection, badge_id: str, pin: str) -> LoginResult:
-    """Atomic DB throttle and bcrypt check. The caller commits before HTTP errors."""
-    row = conn.execute(
-        'SELECT "Outcome", "RetryAfter", "AccountID", "FullName", "Role" '
-        'FROM fn_LoginStaff(%s, %s, %s, %s)',
-        (badge_id, pin, settings.login_max_failures, settings.login_lockout_seconds),
-    ).fetchone()
+def authenticate(conn: Connection, badge_id: str, pin: str | None) -> LoginResult:
+    """Atomic DB throttle and bcrypt check. The caller commits before HTTP errors.
+
+    pin=None is the demo badge-only login; the caller allows it only when
+    settings.demo_badge_login is on.
+    """
+    if pin is None:
+        row = conn.execute(
+            'SELECT "Outcome", "RetryAfter", "AccountID", "FullName", "Role" '
+            'FROM fn_LoginStaffByBadge(%s, %s, %s)',
+            (badge_id, settings.login_max_failures, settings.login_lockout_seconds),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            'SELECT "Outcome", "RetryAfter", "AccountID", "FullName", "Role" '
+            'FROM fn_LoginStaff(%s, %s, %s, %s)',
+            (badge_id, pin, settings.login_max_failures, settings.login_lockout_seconds),
+        ).fetchone()
     if row and row[0] == 'OK':
         return LoginResult(User(account_id=row[2], full_name=row[3], role=Role(row[4])))
     if row and row[0] == 'LOCKED':

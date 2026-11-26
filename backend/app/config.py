@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     login_max_failures: int = Field(default=5, ge=1, le=1000)
     login_lockout_seconds: int = Field(default=5 * 60, ge=1, le=86400)
 
+    # DEMO ONLY: the badge alone logs in, no PIN (decisions.md, record 16). A photo of
+    # a badge barcode is then enough to log in, so never turn this on for real use.
+    demo_badge_login: bool = False
+
     # Background escalation of overdue HIGH/CRITICAL alerts (UC-7)
     escalation_enabled: bool = True
     escalation_interval_seconds: float = 2.0
