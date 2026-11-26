@@ -1,3 +1,4 @@
+import { Button, Card, Chip, Input, Label, ListBox, Select, TextField } from "@heroui/react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 
 import {
@@ -12,9 +13,10 @@ import {
   type Ward,
 } from "./api";
 import { SearchIcon } from "./icons";
+import { Initials, Notice } from "./ui";
 import WardBoard from "./WardBoard";
 
-type Notice = { kind: "ok" | "error"; text: string } | null;
+type NoticeState = { kind: "ok" | "error"; text: string } | null;
 
 function messageOf(error: unknown): string {
   return error instanceof ApiError ? error.message : "Сервер недоступен";
@@ -29,7 +31,7 @@ function formatDate(iso: string): string {
 export default function AdmissionsPage() {
   const [admissions, setAdmissions] = useState<ActiveAdmission[]>([]);
   const [wards, setWards] = useState<Ward[]>([]);
-  const [notice, setNotice] = useState<Notice>(null);
+  const [notice, setNotice] = useState<NoticeState>(null);
   // Bumped after every change so the ward board reloads at once
   const [version, setVersion] = useState(0);
 
@@ -54,12 +56,8 @@ export default function AdmissionsPage() {
   const failed = (error: unknown) => setNotice({ kind: "error", text: messageOf(error) });
 
   return (
-    <div className="stack">
-      {notice && (
-        <p className={`notice notice-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          {notice.text}
-        </p>
-      )}
+    <div className="flex flex-col gap-5">
+      {notice && <Notice kind={notice.kind}>{notice.text}</Notice>}
       <NewAdmissionForm wards={wards} onDone={changed} onError={failed} />
       <PatientsTable admissions={admissions} wards={wards} onDone={changed} onError={failed} />
       <WardBoard refreshKey={version} compact />
@@ -73,7 +71,8 @@ type ActionProps = {
   onError: (error: unknown) => void;
 };
 
-const EMPTY_FORM = { full_name: "", dob: "", phone: "", gender: "" as Gender | "", ward_id: "" };
+const NO_GENDER = "none";
+const EMPTY_FORM = { full_name: "", dob: "", phone: "", gender: NO_GENDER as Gender | typeof NO_GENDER, ward_id: "" };
 
 function NewAdmissionForm({ wards, onDone, onError }: ActionProps) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -88,7 +87,7 @@ function NewAdmissionForm({ wards, onDone, onError }: ActionProps) {
         full_name: form.full_name.trim(),
         dob: form.dob,
         phone: form.phone.replace(/[\s()-]/g, ""),
-        gender: form.gender || null,
+        gender: form.gender === NO_GENDER ? null : form.gender,
         ward_id: Number(form.ward_id),
       });
       onDone(`${admission.full_name} госпитализирован(а) в палату «${admission.ward_name}»`);
@@ -101,47 +100,65 @@ function NewAdmissionForm({ wards, onDone, onError }: ActionProps) {
   }
 
   return (
-    <form className="card form-grid" onSubmit={onSubmit}>
-      <h2 className="form-title">Новая госпитализация</h2>
-      <p className="hint form-wide">
-        Если пациент с таким телефоном уже был в больнице, используется его карточка.
-      </p>
-      <label className="form-wide">
-        ФИО
-        <input value={form.full_name} onChange={(e) => set("full_name")(e.target.value)} required minLength={2} />
-      </label>
-      <label>
-        Дата рождения
-        <input type="date" value={form.dob} onChange={(e) => set("dob")(e.target.value)} required />
-      </label>
-      <label>
-        Телефон
-        <input
-          type="tel"
-          placeholder="+77015550000"
-          value={form.phone}
-          onChange={(e) => set("phone")(e.target.value)}
-          required
-        />
-      </label>
-      <label>
-        Пол
-        <select value={form.gender} onChange={(e) => set("gender")(e.target.value)}>
-          <option value="">не указан</option>
-          <option value="Female">женский</option>
-          <option value="Male">мужской</option>
-        </select>
-      </label>
-      <label>
-        Палата
-        <WardSelect wards={wards} value={form.ward_id} onChange={set("ward_id")} />
-      </label>
-      <div className="form-wide">
-        <button type="submit" disabled={submitting}>
-          {submitting ? "Сохранение…" : "Госпитализировать"}
-        </button>
-      </div>
-    </form>
+    <Card>
+      <Card.Header>
+        <Card.Title render={(props) => <h2 {...props} />}>Новая госпитализация</Card.Title>
+        <Card.Description>Если пациент с таким телефоном уже был в больнице, используется его карточка.</Card.Description>
+      </Card.Header>
+      <Card.Content>
+        <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={onSubmit}>
+          <TextField
+            className="md:col-span-2 xl:col-span-4"
+            value={form.full_name}
+            onChange={set("full_name")}
+            isRequired
+            minLength={2}
+            fullWidth
+          >
+            <Label>ФИО</Label>
+            <Input placeholder="Фамилия Имя Отчество" />
+          </TextField>
+          <TextField type="date" value={form.dob} onChange={set("dob")} isRequired fullWidth>
+            <Label>Дата рождения</Label>
+            <Input />
+          </TextField>
+          <TextField type="tel" value={form.phone} onChange={set("phone")} isRequired fullWidth>
+            <Label>Телефон</Label>
+            <Input placeholder="+77015550000" />
+          </TextField>
+          <Select
+            selectedKey={form.gender}
+            onSelectionChange={(key) => key !== null && set("gender")(String(key))}
+            fullWidth
+          >
+            <Label>Пол</Label>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item id={NO_GENDER} textValue="не указан">
+                  не указан
+                </ListBox.Item>
+                <ListBox.Item id="Female" textValue="женский">
+                  женский
+                </ListBox.Item>
+                <ListBox.Item id="Male" textValue="мужской">
+                  мужской
+                </ListBox.Item>
+              </ListBox>
+            </Select.Popover>
+          </Select>
+          <WardSelect label="Палата" wards={wards} value={form.ward_id} onChange={set("ward_id")} />
+          <div className="md:col-span-2 xl:col-span-4">
+            <Button type="submit" isDisabled={submitting || !form.ward_id}>
+              {submitting ? "Сохранение…" : "Госпитализировать"}
+            </Button>
+          </div>
+        </form>
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -150,77 +167,100 @@ function WardSelect({
   value,
   onChange,
   exclude,
+  label,
 }: {
   wards: Ward[];
   value: string;
   onChange: (value: string) => void;
   exclude?: number;
+  label?: string;
 }) {
+  const shown = wards.filter((w) => w.ward_id !== exclude);
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} required>
-      <option value="" disabled>
-        выберите палату
-      </option>
-      {wards
-        .filter((w) => w.ward_id !== exclude)
-        .map((w) => (
-          <option key={w.ward_id} value={w.ward_id} disabled={w.available === 0}>
-            {w.ward_name} — {w.available === 0 ? "мест нет" : `свободно ${w.available}`}
-          </option>
-        ))}
-    </select>
+    <Select
+      aria-label={label ? undefined : "Палата для перевода"}
+      placeholder="выберите палату"
+      selectedKey={value || null}
+      onSelectionChange={(key) => key !== null && onChange(String(key))}
+      disabledKeys={shown.filter((w) => w.available === 0).map((w) => String(w.ward_id))}
+      isRequired
+      fullWidth
+      className={label ? undefined : "min-w-56"}
+    >
+      {label && <Label>{label}</Label>}
+      <Select.Trigger>
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {shown.map((w) => (
+            <ListBox.Item key={w.ward_id} id={String(w.ward_id)} textValue={w.ward_name}>
+              <div className="flex w-full items-center justify-between gap-3">
+                <span>{w.ward_name}</span>
+                <span className={`text-xs ${w.available === 0 ? "text-[var(--down)]" : "text-[var(--ok)]"}`}>
+                  {w.available === 0 ? "мест нет" : `свободно ${w.available}`}
+                </span>
+              </div>
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
   );
 }
+
+const TH = "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted)]";
+const TD = "px-4 py-3 align-middle";
 
 function PatientsTable({ admissions, ...actions }: ActionProps & { admissions: ActiveAdmission[] }) {
   const [filter, setFilter] = useState("");
   const query = filter.trim().toLowerCase();
   const shown = query
-    ? admissions.filter(
-        (a) => a.full_name.toLowerCase().includes(query) || (a.phone ?? "").includes(query),
-      )
+    ? admissions.filter((a) => a.full_name.toLowerCase().includes(query) || (a.phone ?? "").includes(query))
     : admissions;
 
   return (
-    <section className="card">
-      <div className="section-head">
-        <h2>Сейчас в отделении</h2>
-        <span className="badge badge-muted">{admissions.length} пациентов</span>
-      </div>
-      <div className="search-box">
-        <SearchIcon size={18} />
-        <input
-          className="search"
-          type="search"
-          placeholder="Поиск по ФИО или телефону"
-          aria-label="Поиск пациента"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      </div>
-      {shown.length === 0 ? (
-        <p className="empty">{admissions.length ? "Никого не найдено" : "В отделении нет пациентов"}</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Пациент</th>
-                <th>Телефон</th>
-                <th>Палата</th>
-                <th>Поступил(а)</th>
-                <th aria-label="Действия" />
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map((a) => (
-                <PatientRow key={a.admission_id} admission={a} {...actions} />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    <Card>
+      <Card.Header className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <Card.Title render={(props) => <h2 {...props} />}>Сейчас в отделении</Card.Title>
+        <Chip variant="soft">{admissions.length} пациентов</Chip>
+      </Card.Header>
+      <Card.Content className="flex flex-col gap-3">
+        <TextField aria-label="Поиск пациента" value={filter} onChange={setFilter} className="max-w-md" fullWidth>
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]">
+              <SearchIcon size={18} />
+            </span>
+            <Input type="search" placeholder="Поиск по ФИО или телефону" className="w-full pl-10" />
+          </div>
+        </TextField>
+        {shown.length === 0 ? (
+          <p className="m-0 py-6 text-center text-[var(--muted)]">
+            {admissions.length ? "Никого не найдено" : "В отделении нет пациентов"}
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-[var(--surface-2)]">
+                <tr>
+                  <th className={TH}>Пациент</th>
+                  <th className={TH}>Телефон</th>
+                  <th className={TH}>Палата</th>
+                  <th className={TH}>Поступил(а)</th>
+                  <th className={TH} aria-label="Действия" />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((a) => (
+                  <PatientRow key={a.admission_id} admission={a} {...actions} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -256,47 +296,58 @@ function PatientRow({ admission, wards, onDone, onError }: ActionProps & { admis
     });
 
   return (
-    <tr>
-      <td>
-        <strong>{admission.full_name}</strong>
-        <span className="hint block">р. {formatDate(admission.dob)}</span>
+    <tr className="border-t border-[var(--border)] hover:bg-[var(--surface-2)]">
+      <td className={TD}>
+        <div className="flex items-center gap-3">
+          <Initials name={admission.full_name} />
+          <div className="flex flex-col">
+            <strong className="whitespace-nowrap text-[var(--text)]">{admission.full_name}</strong>
+            <span className="text-xs text-[var(--muted)]">р. {formatDate(admission.dob)}</span>
+          </div>
+        </div>
       </td>
-      <td className="num">{admission.phone ?? "—"}</td>
-      <td>{admission.ward_name}</td>
-      <td className="num">{formatDate(admission.admit_date)}</td>
-      <td className="actions">
-        {mode === "view" && (
-          <>
-            <button type="button" className="secondary" onClick={() => setMode("transfer")}>
-              Перевести
-            </button>
-            <button type="button" className="secondary" onClick={() => setMode("discharge")}>
-              Выписать
-            </button>
-          </>
-        )}
-        {mode === "transfer" && (
-          <>
-            <WardSelect wards={wards} value={target} onChange={setTarget} exclude={admission.ward_id} />
-            <button type="button" onClick={transfer} disabled={busy || !target}>
-              Перевести
-            </button>
-            <button type="button" className="secondary" onClick={() => setMode("view")} disabled={busy}>
-              Отмена
-            </button>
-          </>
-        )}
-        {mode === "discharge" && (
-          <>
-            <span>Выписать?</span>
-            <button type="button" className="danger" onClick={discharge} disabled={busy}>
-              Да, выписать
-            </button>
-            <button type="button" className="secondary" onClick={() => setMode("view")} disabled={busy}>
-              Отмена
-            </button>
-          </>
-        )}
+      <td className={`${TD} tabular-nums`}>{admission.phone ?? "—"}</td>
+      <td className={TD}>
+        <Chip size="sm" variant="soft" color="accent" className="whitespace-nowrap">
+          {admission.ward_name}
+        </Chip>
+      </td>
+      <td className={`${TD} tabular-nums`}>{formatDate(admission.admit_date)}</td>
+      <td className={TD}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {mode === "view" && (
+            <>
+              <Button size="sm" variant="secondary" onPress={() => setMode("transfer")}>
+                Перевести
+              </Button>
+              <Button size="sm" variant="ghost" className="text-[var(--down)]" onPress={() => setMode("discharge")}>
+                Выписать
+              </Button>
+            </>
+          )}
+          {mode === "transfer" && (
+            <>
+              <WardSelect wards={wards} value={target} onChange={setTarget} exclude={admission.ward_id} />
+              <Button size="sm" onPress={transfer} isDisabled={busy || !target}>
+                Перевести
+              </Button>
+              <Button size="sm" variant="secondary" onPress={() => setMode("view")} isDisabled={busy}>
+                Отмена
+              </Button>
+            </>
+          )}
+          {mode === "discharge" && (
+            <>
+              <span className="text-sm text-[var(--text)]">Выписать?</span>
+              <Button size="sm" variant="danger" onPress={discharge} isDisabled={busy}>
+                Да, выписать
+              </Button>
+              <Button size="sm" variant="secondary" onPress={() => setMode("view")} isDisabled={busy}>
+                Отмена
+              </Button>
+            </>
+          )}
+        </div>
       </td>
     </tr>
   );
