@@ -1,4 +1,4 @@
-import { Alert, Card, Chip, Input, Label, ListBox, Select, Table, TextField, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Card, Chip, Input, Label, ListBox, Select, Table, TextField, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { useCallback, useEffect, useState, type Key } from "react";
 
 import {
@@ -15,12 +15,13 @@ import {
   type NurseStatus,
   type WardAssignment,
 } from "./api";
+import { initials, Notice, StatCard } from "./ui";
 
 // "Назначения" is the first screen built with HeroUI (src/heroui.css); the other
 // screens still use index.css. Labels and roles are the same as before, so the
 // unit and end-to-end tests read the screen the same way.
 
-type Notice = { kind: "ok" | "error"; text: string } | null;
+type NoticeState = { kind: "ok" | "error"; text: string } | null;
 
 type Cell = "none" | "additional" | "primary";
 
@@ -64,14 +65,6 @@ function cellOf(ward: WardAssignment, nurseId: string): Cell {
   return nurse.is_primary ? "primary" : "additional";
 }
 
-function initials(fullName: string): string {
-  return fullName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]!.toUpperCase())
-    .join("");
-}
 
 /** Head nurse: who works in which ward, primary and additional nurses (T-51). */
 export default function AssignmentsPage() {
@@ -79,7 +72,7 @@ export default function AssignmentsPage() {
   const [log, setLog] = useState<AssignmentLogEntry[]>([]);
   const [logWard, setLogWard] = useState<number | null>(null);
   const [reason, setReason] = useState("");
-  const [notice, setNotice] = useState<Notice>(null);
+  const [notice, setNotice] = useState<NoticeState>(null);
   // Cell being saved, as "ward:nurse"; the whole table waits for one change at a time
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -131,7 +124,7 @@ export default function AssignmentsPage() {
 
   if (!board) {
     return notice ? (
-      <NoticeAlert notice={notice} />
+      <Notice kind={notice.kind}>{notice.text}</Notice>
     ) : (
       <Card aria-busy="true" className="h-40 animate-pulse">
         <span className="sr-only">Загрузка…</span>
@@ -143,12 +136,12 @@ export default function AssignmentsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      {notice && <NoticeAlert notice={notice} />}
+      {notice && <Notice kind={notice.kind}>{notice.text}</Notice>}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Палат" value={board.wards.length} />
-        <Stat label="Медсестёр" value={board.nurses.length} />
-        <Stat label="Назначений" value={assigned} />
+        <StatCard label="Палат" value={board.wards.length} />
+        <StatCard label="Медсестёр" value={board.nurses.length} />
+        <StatCard label="Назначений" value={assigned} />
       </div>
 
       <Card>
@@ -231,27 +224,7 @@ export default function AssignmentsPage() {
   );
 }
 
-function NoticeAlert({ notice }: { notice: NonNullable<Notice> }) {
-  return (
-    <Alert status={notice.kind === "error" ? "danger" : "success"} role={notice.kind === "error" ? "alert" : "status"}>
-      <Alert.Indicator />
-      <Alert.Content>
-        <Alert.Description>{notice.text}</Alert.Description>
-      </Alert.Content>
-    </Alert>
-  );
-}
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <Card>
-      <Card.Content className="flex flex-col gap-1">
-        <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">{label}</span>
-        <span className="text-3xl font-bold tabular-nums text-[var(--text)]">{value}</span>
-      </Card.Content>
-    </Card>
-  );
-}
 
 function Legend() {
   return (
