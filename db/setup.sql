@@ -19,6 +19,8 @@
 \ir migrations/20261124_staff_review_requests.sql
 \echo '>> 20261125_pews_pediatric_ward_types.sql'
 \ir migrations/20261125_pews_pediatric_ward_types.sql
+\echo '>> 07_badges.sql'
+\ir 07_badges.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
 \echo '>> 20261125_add_paediatrics_ward.sql'

@@ -92,11 +92,18 @@ export async function getHealth(): Promise<Health> {
   return response.json();
 }
 
-export function login(badgeId: string, pin: string): Promise<User> {
+// pin=null: demo badge-only login, accepted only when the server has it switched on
+export function login(badgeId: string, pin: string | null): Promise<User> {
   return request("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ badge_id: badgeId, pin }),
+    body: JSON.stringify(pin === null ? { badge_id: badgeId } : { badge_id: badgeId, pin }),
   });
+}
+
+export type LoginOptions = { badge_only: boolean };
+
+export function getLoginOptions(): Promise<LoginOptions> {
+  return request("/api/auth/options");
 }
 
 export function logout(): Promise<void> {
@@ -568,4 +575,21 @@ export function getAssignmentLog(wardId: number | null, limit = 50): Promise<Ass
   const params = new URLSearchParams({ limit: String(limit) });
   if (wardId !== null) params.set("ward_id", String(wardId));
   return request(`/api/assignments/log?${params}`);
+}
+
+// --- Badges with a barcode (head nurse) ------------------------------------------------------
+
+export type Badge = {
+  person_id: string;
+  full_name: string;
+  role: string;
+  badge_id: string;
+};
+
+export function getBadges(): Promise<Badge[]> {
+  return request("/api/badges");
+}
+
+export function reissueBadge(personId: string): Promise<Badge> {
+  return request(`/api/badges/${encodeURIComponent(personId)}/reissue`, { method: "POST" });
 }

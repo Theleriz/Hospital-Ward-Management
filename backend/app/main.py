@@ -15,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.db import create_pool
 from app.escalation import EscalationWorker
-from app.routers import admissions, alerts, assignments, auth, board, reports, simulator, staff_reviews, wards
+from app.routers import admissions, alerts, assignments, auth, badges, board, reports, simulator, staff_reviews, wards
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,7 @@ app.include_router(admissions.router)
 app.include_router(alerts.router)
 app.include_router(reports.router)
 app.include_router(assignments.router)
+app.include_router(badges.router)
 app.include_router(simulator.router)
 app.include_router(staff_reviews.router)
 app.include_router(board.router)
