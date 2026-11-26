@@ -1,4 +1,5 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Button, Card, Chip, Label, ListBox, Select, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Fragment, useCallback, useEffect, useState, type Key, type ReactNode } from "react";
 
 import {
   ApiError,
@@ -11,7 +12,7 @@ import {
   type Priority,
 } from "./api";
 import { ChevronIcon, RefreshIcon } from "./icons";
-import { Stat } from "./WardBoard";
+import { Notice, StatCard } from "./ui";
 
 const REFRESH_MS = 30_000;
 
@@ -23,17 +24,21 @@ const PERIODS = [
 ];
 
 const PRIORITY_LABELS: Record<Priority, string> = { CRITICAL: "Критическое", HIGH: "Высокое", LOW: "Низкое" };
+const PRIORITY_COLORS: Record<Priority, "danger" | "warning" | "default"> = {
+  CRITICAL: "danger",
+  HIGH: "warning",
+  LOW: "default",
+};
 
 const STATUS_LABELS: Record<AlertStatus, string> = {
   PENDING: "ждёт",
   ESCALATED: "эскалировано",
   ACKNOWLEDGED: "подтверждено",
 };
-
-const STATUS_BADGES: Record<AlertStatus, string> = {
-  PENDING: "badge badge-warn",
-  ESCALATED: "badge badge-down",
-  ACKNOWLEDGED: "badge badge-ok",
+const STATUS_COLORS: Record<AlertStatus, "warning" | "danger" | "success"> = {
+  PENDING: "warning",
+  ESCALATED: "danger",
+  ACKNOWLEDGED: "success",
 };
 
 const EVENT_LABELS: Record<AlertJournalEvent["event_type"], string> = {
@@ -42,8 +47,28 @@ const EVENT_LABELS: Record<AlertJournalEvent["event_type"], string> = {
   ESCALATED: "Эскалировано",
   ACKNOWLEDGED: "Подтверждено",
 };
+// Dot colour of each event on the journal timeline
+const EVENT_DOTS: Record<AlertJournalEvent["event_type"], string> = {
+  CREATED: "bg-[var(--muted)]",
+  ASSIGNED: "bg-[var(--accent)]",
+  ESCALATED: "bg-[var(--down)]",
+  ACKNOWLEDGED: "bg-[var(--ok)]",
+};
 
 type StatusFilter = "all" | "open" | "escalated" | "acknowledged";
+
+const PRIORITY_FILTERS: { id: Priority | "all"; label: string }[] = [
+  { id: "all", label: "все" },
+  { id: "CRITICAL", label: "критические" },
+  { id: "HIGH", label: "высокие" },
+  { id: "LOW", label: "низкие" },
+];
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: "all", label: "все" },
+  { id: "open", label: "не подтверждены" },
+  { id: "escalated", label: "эскалированные" },
+  { id: "acknowledged", label: "подтверждённые" },
+];
 
 const DATE_TIME = new Intl.DateTimeFormat("ru-RU", {
   day: "2-digit",
@@ -52,6 +77,12 @@ const DATE_TIME = new Intl.DateTimeFormat("ru-RU", {
   minute: "2-digit",
 });
 const TIME = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// Table styling shared by the report tables (plain tables: history rows open a journal)
+const TH = "px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[var(--muted)]";
+const TH_NUM = `${TH} text-right`;
+const TD = "px-4 py-3 align-middle";
+const TD_NUM = `${TD} text-right tabular-nums`;
 
 /** "12 с", "5 мин 03 с", "2 ч 05 мин"; "—" when there is nothing to show */
 export function formatDuration(seconds: number | null): string {
@@ -95,50 +126,55 @@ export default function ReportPage() {
   const shown = report?.hours === hours ? report : null;
 
   return (
-    <div className="stack">
-      <section className="card toolbar">
-        <div className="segmented" role="group" aria-label="Период отчёта">
-          {PERIODS.map((p) => (
-            <button
-              key={p.hours}
-              type="button"
-              className={hours === p.hours ? "segment segment-active segment-accent" : "segment"}
-              aria-pressed={hours === p.hours}
-              onClick={() => setHours(p.hours)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-side">
-          <span className="hint">
-            {report ? `обновлено в ${TIME.format(new Date(report.generated_at))}` : "загрузка…"}
-          </span>
-          <button
-            type="button"
-            className="secondary toggle"
-            onClick={() => void load(hours)}
-            disabled={loading}
-            aria-label="Обновить отчёт"
+    <div className="flex flex-col gap-5">
+      <Card>
+        <Card.Content className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <ToggleButtonGroup
+            aria-label="Период отчёта"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[String(hours)]}
+            onSelectionChange={(keys: Set<Key>) => {
+              const [next] = keys;
+              if (next) setHours(Number(next));
+            }}
           >
-            <RefreshIcon size={18} />
-            Обновить
-          </button>
-        </div>
-      </section>
+            {PERIODS.map((p) => (
+              <ToggleButton
+                key={p.hours}
+                id={String(p.hours)}
+                className="bg-[var(--surface-2)] font-semibold text-[var(--text)] hover:bg-[var(--border)] data-[selected=true]:!bg-[var(--accent)] data-[selected=true]:!text-white"
+              >
+                {p.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-[var(--muted)]">
+              {report ? `обновлено в ${TIME.format(new Date(report.generated_at))}` : "загрузка…"}
+            </span>
+            <Button variant="secondary" onPress={() => void load(hours)} isDisabled={loading} aria-label="Обновить отчёт">
+              <span className={loading ? "animate-spin" : undefined}>
+                <RefreshIcon size={18} />
+              </span>
+              Обновить
+            </Button>
+          </div>
+        </Card.Content>
+      </Card>
 
-      {error && (
-        <p className="notice notice-error" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Notice kind="error">{error}</Notice>}
 
       {!shown ? (
-        <p className="card empty">{error ? "Не удалось загрузить отчёт" : "Загрузка отчёта…"}</p>
+        <Card>
+          <Card.Content className="py-8 text-center text-[var(--muted)]">
+            {error ? "Не удалось загрузить отчёт" : "Загрузка отчёта…"}
+          </Card.Content>
+        </Card>
       ) : (
         <>
           <Summary report={shown} />
-          <div className="report-grid">
+          <div className="grid gap-5 2xl:grid-cols-[2fr_3fr]">
             <ByPriority report={shown} />
             <ByNurse report={shown} />
           </div>
@@ -152,21 +188,29 @@ export default function ReportPage() {
 function Summary({ report }: { report: AlertReport }) {
   const { summary: s, target_seconds: target } = report;
   const slow = s.avg_response_seconds !== null && s.avg_response_seconds > target;
+  const within = s.acknowledged ? Math.round((s.within_target / s.acknowledged) * 100) : 0;
   return (
-    <div className="stats">
-      <Stat label="Оповещений" value={s.total} sub={s.open ? `${s.open} ещё не подтверждено` : "все подтверждены"} />
-      <Stat
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <StatCard label="Оповещений" value={s.total} sub={s.open ? `${s.open} ещё не подтверждено` : "все подтверждены"} />
+      <StatCard
         label="Среднее время реакции"
         value={formatDuration(s.avg_response_seconds)}
         tone={s.avg_response_seconds === null ? undefined : slow ? "warn" : "ok"}
         sub={`медиана ${formatDuration(s.median_response_seconds)} · макс. ${formatDuration(s.max_response_seconds)}`}
       />
-      <Stat
+      <StatCard
         label={`Подтверждено за ${target} с`}
         value={percent(s.within_target, s.acknowledged)}
-        sub={`${s.within_target} из ${s.acknowledged} подтверждённых`}
+        sub={
+          <span className="flex flex-col gap-1.5">
+            <span>
+              {s.within_target} из {s.acknowledged} подтверждённых
+            </span>
+            <Bar value={within} tone={within >= 80 ? "ok" : within >= 50 ? "warn" : "down"} />
+          </span>
+        }
       />
-      <Stat
+      <StatCard
         label="Эскалировано"
         value={s.escalated}
         tone={s.escalated ? "down" : "ok"}
@@ -176,95 +220,163 @@ function Summary({ report }: { report: AlertReport }) {
   );
 }
 
+/** Thin progress bar, 0–100 */
+function Bar({ value, tone }: { value: number; tone: "ok" | "warn" | "down" }) {
+  const colour = { ok: "bg-[var(--ok)]", warn: "bg-[var(--warn)]", down: "bg-[var(--down)]" }[tone];
+  return (
+    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--border)]" aria-hidden="true">
+      <span className={`block h-full rounded-full ${colour}`} style={{ width: `${Math.min(100, value)}%` }} />
+    </span>
+  );
+}
+
+function ReportCard({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    // min-w-0: inside the grid the card may shrink, and its table scrolls instead of overflowing
+    <Card className="min-w-0">
+      <Card.Header className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <Card.Title render={(props) => <h2 {...props} />}>{title}</Card.Title>
+        {aside}
+      </Card.Header>
+      <Card.Content className="flex flex-col gap-3">{children}</Card.Content>
+    </Card>
+  );
+}
+
+function TableFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  );
+}
+
 function ByPriority({ report }: { report: AlertReport }) {
   return (
-    <section className="card">
-      <h2>По приоритетам</h2>
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Приоритет</th>
-              <th className="num-col">Всего</th>
-              <th className="num-col">Подтв.</th>
-              <th className="num-col">Эскал.</th>
-              <th className="num-col">Реакция</th>
+    <ReportCard title="По приоритетам">
+      <TableFrame>
+        <thead className="bg-[var(--surface-2)]">
+          <tr>
+            <th className={TH}>Приоритет</th>
+            <th className={TH_NUM}>Всего</th>
+            <th className={TH_NUM}>Подтв.</th>
+            <th className={TH_NUM}>Эскал.</th>
+            <th className={TH_NUM}>Реакция</th>
+          </tr>
+        </thead>
+        <tbody>
+          {report.by_priority.map((r) => (
+            <tr key={r.priority} className="border-t border-[var(--border)]">
+              <td className={TD}>
+                <Chip size="sm" variant="soft" color={PRIORITY_COLORS[r.priority]}>
+                  {PRIORITY_LABELS[r.priority]}
+                </Chip>
+              </td>
+              <td className={TD_NUM}>{r.total}</td>
+              <td className={TD_NUM}>{r.acknowledged}</td>
+              <td className={`${TD_NUM} ${r.escalated ? "font-semibold text-[var(--down)]" : ""}`}>{r.escalated}</td>
+              <td className={TD_NUM}>
+                <Response seconds={r.avg_response_seconds} target={report.target_seconds} />
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {report.by_priority.map((r) => (
-              <tr key={r.priority}>
-                <td>
-                  <span className={`priority priority-${r.priority}`}>{PRIORITY_LABELS[r.priority]}</span>
-                </td>
-                <td className="num num-col">{r.total}</td>
-                <td className="num num-col">{r.acknowledged}</td>
-                <td className={`num num-col${r.escalated ? " text-down" : ""}`}>{r.escalated}</td>
-                <td className="num num-col">
-                  <Response seconds={r.avg_response_seconds} target={report.target_seconds} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+          ))}
+        </tbody>
+      </TableFrame>
+    </ReportCard>
   );
 }
 
 function ByNurse({ report }: { report: AlertReport }) {
   return (
-    <section className="card">
-      <h2>По медсёстрам</h2>
+    <ReportCard title="По медсёстрам">
       {report.by_nurse.length === 0 ? (
-        <p className="empty">За период оповещений не было</p>
+        <p className="m-0 py-4 text-center text-[var(--muted)]">За период оповещений не было</p>
       ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Медсестра</th>
-                <th className="num-col" title="Оповещения, назначенные медсестре первой">
-                  Назнач.
-                </th>
-                <th className="num-col">Подтв.</th>
-                <th className="num-col">Реакция</th>
-                <th className="num-col" title="Назначенные ей, но ушедшие другой медсестре после 30 с">
-                  Ушло
-                </th>
-                <th className="num-col" title="Пришли ей эскалацией от другой медсестры">
-                  Пришло
-                </th>
+        <TableFrame>
+          <thead className="bg-[var(--surface-2)]">
+            <tr>
+              <th className={TH}>Медсестра</th>
+              <th className={TH_NUM} title="Оповещения, назначенные медсестре первой">
+                Назнач.
+              </th>
+              <th className={TH_NUM}>Подтв.</th>
+              <th className={TH_NUM}>Реакция</th>
+              <th className={TH_NUM} title="Назначенные ей, но ушедшие другой медсестре после 30 с">
+                Ушло
+              </th>
+              <th className={TH_NUM} title="Пришли ей эскалацией от другой медсестры">
+                Пришло
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.by_nurse.map((n) => (
+              <tr key={n.nurse_id} className="border-t border-[var(--border)]">
+                <td className={TD}>
+                  <div className="flex flex-col">
+                    <span className="whitespace-nowrap font-medium text-[var(--text)]">{n.full_name}</span>
+                    <span className="text-xs text-[var(--muted)]">{n.nurse_id}</span>
+                  </div>
+                </td>
+                <td className={TD_NUM}>{n.assigned}</td>
+                <td className={TD_NUM}>{n.acknowledged}</td>
+                <td className={TD_NUM}>
+                  <Response seconds={n.avg_response_seconds} target={report.target_seconds} />
+                </td>
+                <td className={`${TD_NUM} ${n.escalated_away ? "font-semibold text-[var(--down)]" : ""}`}>
+                  {n.escalated_away}
+                </td>
+                <td className={TD_NUM}>{n.received_escalations}</td>
               </tr>
-            </thead>
-            <tbody>
-              {report.by_nurse.map((n) => (
-                <tr key={n.nurse_id}>
-                  <td>
-                    {n.full_name}
-                    <span className="hint block">{n.nurse_id}</span>
-                  </td>
-                  <td className="num num-col">{n.assigned}</td>
-                  <td className="num num-col">{n.acknowledged}</td>
-                  <td className="num num-col">
-                    <Response seconds={n.avg_response_seconds} target={report.target_seconds} />
-                  </td>
-                  <td className={`num num-col${n.escalated_away ? " text-down" : ""}`}>{n.escalated_away}</td>
-                  <td className="num num-col">{n.received_escalations}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </TableFrame>
       )}
-      <p className="hint table-note">«Ушло» — не подтверждены за 30 с и переданы другой медсестре; «Пришло» — получены эскалацией.</p>
-    </section>
+      <p className="m-0 text-xs text-[var(--muted)]">
+        «Ушло» — не подтверждены за 30 с и переданы другой медсестре; «Пришло» — получены эскалацией.
+      </p>
+    </ReportCard>
   );
 }
 
 function Response({ seconds, target }: { seconds: number | null; target: number }) {
-  if (seconds === null) return <span className="hint">—</span>;
-  return <span className={seconds > target ? "text-warn" : "text-ok"}>{formatDuration(seconds)}</span>;
+  if (seconds === null) return <span className="text-[var(--muted)]">—</span>;
+  return (
+    <span className={`font-medium ${seconds > target ? "text-[var(--warn)]" : "text-[var(--ok)]"}`}>
+      {formatDuration(seconds)}
+    </span>
+  );
+}
+
+function FilterSelect<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { id: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <Select className="w-52" selectedKey={value} onSelectionChange={(key) => key !== null && onChange(key as T)}>
+      <Label>{label}</Label>
+      <Select.Trigger>
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {options.map((o) => (
+            <ListBox.Item key={o.id} id={o.id} textValue={o.label}>
+              {o.label}
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  );
 }
 
 function History({ report }: { report: AlertReport }) {
@@ -282,67 +394,52 @@ function History({ report }: { report: AlertReport }) {
   );
 
   return (
-    <section className="card">
-      <div className="section-head">
-        <h2>История оповещений</h2>
-        <span className="badge badge-muted">
+    <ReportCard
+      title="История оповещений"
+      aside={
+        <Chip variant="soft">
           {alerts.length} из {report.summary.total}
-        </span>
-      </div>
-      <div className="filters">
-        <label>
-          Приоритет
-          <select value={priority} onChange={(e) => setPriority(e.target.value as Priority | "all")}>
-            <option value="all">все</option>
-            <option value="CRITICAL">критические</option>
-            <option value="HIGH">высокие</option>
-            <option value="LOW">низкие</option>
-          </select>
-        </label>
-        <label>
-          Статус
-          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}>
-            <option value="all">все</option>
-            <option value="open">не подтверждены</option>
-            <option value="escalated">эскалированные</option>
-            <option value="acknowledged">подтверждённые</option>
-          </select>
-        </label>
+        </Chip>
+      }
+    >
+      <div className="flex flex-wrap gap-3">
+        <FilterSelect label="Приоритет" value={priority} options={PRIORITY_FILTERS} onChange={setPriority} />
+        <FilterSelect label="Статус" value={status} options={STATUS_FILTERS} onChange={setStatus} />
       </div>
       {report.alerts_truncated && (
-        <p className="hint">Показаны последние {report.alerts.length} оповещений; сводка считает все.</p>
+        <p className="m-0 text-sm text-[var(--muted)]">
+          Показаны последние {report.alerts.length} оповещений; сводка считает все.
+        </p>
       )}
       {alerts.length === 0 ? (
-        <p className="empty">Нет оповещений по выбранным условиям</p>
+        <p className="m-0 py-4 text-center text-[var(--muted)]">Нет оповещений по выбранным условиям</p>
       ) : (
-        <div className="table-wrap">
-          <table className="table history">
-            <thead>
-              <tr>
-                <th aria-label="Журнал" />
-                <th>Время</th>
-                <th>Оповещение</th>
-                <th>Приоритет</th>
-                <th>Кто получил и подтвердил</th>
-                <th>Статус</th>
-                <th className="num-col">Реакция</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((a) => (
-                <HistoryRow
-                  key={a.alert_id}
-                  alert={a}
-                  target={report.target_seconds}
-                  expanded={open === a.alert_id}
-                  onToggle={() => setOpen(open === a.alert_id ? null : a.alert_id)}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TableFrame>
+          <thead className="bg-[var(--surface-2)]">
+            <tr>
+              <th className={`${TH} w-10`} aria-label="Журнал" />
+              <th className={TH}>Время</th>
+              <th className={TH}>Оповещение</th>
+              <th className={TH}>Приоритет</th>
+              <th className={TH}>Кто получил и подтвердил</th>
+              <th className={TH}>Статус</th>
+              <th className={TH_NUM}>Реакция</th>
+            </tr>
+          </thead>
+          <tbody>
+            {alerts.map((a) => (
+              <HistoryRow
+                key={a.alert_id}
+                alert={a}
+                target={report.target_seconds}
+                expanded={open === a.alert_id}
+                onToggle={() => setOpen(open === a.alert_id ? null : a.alert_id)}
+              />
+            ))}
+          </tbody>
+        </TableFrame>
       )}
-    </section>
+    </ReportCard>
   );
 }
 
@@ -359,52 +456,67 @@ function HistoryRow({
 }) {
   return (
     <Fragment>
-      <tr className={expanded ? "row-open" : undefined} onClick={onToggle}>
-        <td className="row-toggle">
-          <button
-            type="button"
-            className="icon-button chevron"
+      <tr
+        className={`cursor-pointer border-t border-[var(--border)] transition-colors hover:bg-[var(--surface-2)] ${
+          expanded ? "bg-[var(--surface-2)]" : ""
+        }`}
+        onClick={onToggle}
+      >
+        <td className={TD}>
+          <Button
+            isIconOnly
+            size="sm"
+            variant="ghost"
             aria-expanded={expanded}
             aria-label={`Журнал ${alert.alert_id}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
+            onPress={onToggle}
           >
-            <ChevronIcon size={16} />
-          </button>
+            <span className={`transition-transform ${expanded ? "rotate-90" : ""}`}>
+              <ChevronIcon size={16} />
+            </span>
+          </Button>
         </td>
-        <td className="num">{DATE_TIME.format(new Date(alert.created_at))}</td>
-        <td>
-          <strong>{alert.alert_id}</strong>
-          <span className="hint block">
-            {alert.ward_name}
-            {alert.description && ` · ${alert.description}`}
-          </span>
+        <td className={`${TD} tabular-nums`}>{DATE_TIME.format(new Date(alert.created_at))}</td>
+        <td className={TD}>
+          <div className="flex flex-col">
+            <strong className="text-[var(--text)]">{alert.alert_id}</strong>
+            <span className="text-xs text-[var(--muted)]">
+              {alert.ward_name}
+              {alert.description && ` · ${alert.description}`}
+            </span>
+          </div>
         </td>
-        <td>
-          <span className={`priority priority-${alert.priority}`}>{PRIORITY_LABELS[alert.priority]}</span>
+        <td className={TD}>
+          <Chip size="sm" variant="soft" color={PRIORITY_COLORS[alert.priority]}>
+            {PRIORITY_LABELS[alert.priority]}
+          </Chip>
         </td>
-        <td>
-          <span className="path">
-            {alert.assigned_nurse_name ?? "никому"}
-            {alert.escalated_to_name && <span className="text-down"> → {alert.escalated_to_name}</span>}
-          </span>
-          {alert.acknowledged_by_name && (
-            <span className="hint block">подтвердил(а): {alert.acknowledged_by_name}</span>
-          )}
+        <td className={TD}>
+          <div className="flex flex-col">
+            <span>
+              {alert.assigned_nurse_name ?? "никому"}
+              {alert.escalated_to_name && (
+                <span className="font-medium text-[var(--down)]"> → {alert.escalated_to_name}</span>
+              )}
+            </span>
+            {alert.acknowledged_by_name && (
+              <span className="text-xs text-[var(--muted)]">подтвердил(а): {alert.acknowledged_by_name}</span>
+            )}
+          </div>
         </td>
-        <td>
-          <span className={STATUS_BADGES[alert.status]}>{STATUS_LABELS[alert.status]}</span>
+        <td className={TD}>
+          <Chip size="sm" variant="soft" color={STATUS_COLORS[alert.status]}>
+            {STATUS_LABELS[alert.status]}
+          </Chip>
         </td>
-        <td className="num num-col">
+        <td className={TD_NUM}>
           <Response seconds={alert.response_seconds} target={target} />
         </td>
       </tr>
       {expanded && (
-        <tr className="journal-row">
+        <tr className="bg-[var(--surface-2)]">
           <td />
-          <td colSpan={6}>
+          <td colSpan={6} className="px-4 pb-4">
             <Journal alertId={alert.alert_id} />
           </td>
         </tr>
@@ -423,20 +535,24 @@ function Journal({ alertId }: { alertId: string }) {
       .catch((err) => setError(err instanceof ApiError ? err.message : "Сервер недоступен"));
   }, [alertId]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!events) return <p className="hint">Загрузка журнала…</p>;
+  if (error) return <p className="m-0 text-sm text-[var(--down)]">{error}</p>;
+  if (!events) return <p className="m-0 text-sm text-[var(--muted)]">Загрузка журнала…</p>;
 
   const start = Date.parse(events[0]?.occurred_at ?? "");
   return (
-    <ol className="timeline" aria-label={`Журнал оповещения ${alertId}`}>
+    <ol className="relative m-0 ml-2 flex list-none flex-col gap-3 border-l-2 border-[var(--border)] py-1 pl-6" aria-label={`Журнал оповещения ${alertId}`}>
       {events.map((e) => (
-        <li key={e.event_id} className={`timeline-${e.event_type}`}>
-          <span className="timeline-time num">{TIME.format(new Date(e.occurred_at))}</span>
-          <span>
+        <li key={e.event_id} className="relative flex flex-wrap items-baseline gap-x-3 text-sm">
+          <span
+            aria-hidden="true"
+            className={`absolute -left-[31px] top-1 size-3 rounded-full ring-4 ring-[var(--surface-2)] ${EVENT_DOTS[e.event_type]}`}
+          />
+          <span className="tabular-nums text-[var(--muted)]">{TIME.format(new Date(e.occurred_at))}</span>
+          <span className="text-[var(--text)]">
             <strong>{EVENT_LABELS[e.event_type]}</strong>
             {e.nurse_name && ` · ${e.nurse_name}`}
             {e.event_type !== "CREATED" && (
-              <span className="hint"> · через {formatDuration((Date.parse(e.occurred_at) - start) / 1000)}</span>
+              <span className="text-[var(--muted)]"> · через {formatDuration((Date.parse(e.occurred_at) - start) / 1000)}</span>
             )}
           </span>
         </li>
