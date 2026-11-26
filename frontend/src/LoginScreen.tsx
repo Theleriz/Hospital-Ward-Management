@@ -1,16 +1,28 @@
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { ApiError, login, type User } from "./api";
+import CameraScanner from "./CameraScanner";
 import { BadgeIcon, ClockIcon, LogoMark, PostIcon, WardsIcon } from "./icons";
 
 // Badge reader works like a keyboard: it types the badge ID and presses Enter.
 // Enter in the badge field moves on to the PIN instead of submitting the form.
+// Without a reader, the camera reads the barcode on the badge. The PIN is always
+// needed: a photo of a barcode must not be enough to log in.
 export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
   const [badgeId, setBadgeId] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const pinRef = useRef<HTMLInputElement>(null);
+
+  const onScanned = useCallback((text: string) => {
+    setBadgeId(text.slice(0, 32));
+    setError(null);
+    setScanning(false);
+    // After the dialog has closed and given focus back
+    requestAnimationFrame(() => pinRef.current?.focus());
+  }, []);
 
   function onBadgeKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter") {
@@ -69,7 +81,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
           </span>
           <div>
             <h2>Вход по бейджу</h2>
-            <p className="hint">Приложите бейдж к считывателю или введите его номер, затем PIN.</p>
+            <p className="hint">Отсканируйте штрих-код бейджа сканером или камерой либо введите номер, затем PIN.</p>
           </div>
 
           <label>
@@ -86,6 +98,10 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
               required
             />
           </label>
+
+          <button type="button" className="secondary button-block" onClick={() => setScanning(true)}>
+            Сканировать камерой
+          </button>
 
           <label>
             PIN
@@ -116,6 +132,8 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
           </button>
         </form>
       </section>
+
+      {scanning && <CameraScanner onResult={onScanned} onClose={() => setScanning(false)} />}
     </div>
   );
 }

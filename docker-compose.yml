@@ -36,8 +36,17 @@ services:
   frontend:
     build: ./frontend
     container_name: medbase-frontend
+    environment:
+      # Extra names / IP addresses for the HTTPS certificate, e.g. this computer's
+      # address on the ward Wi-Fi so a phone or tablet can open it (README, "HTTPS")
+      MEDBASE_CERT_HOSTS: ${MEDBASE_CERT_HOSTS:-}
+    volumes:
+      - medbase-certs:/etc/nginx/certs
     ports:
       - "127.0.0.1:8080:80"
+      # HTTPS: the camera works only here. Local only by default; set
+      # MEDBASE_HTTPS_BIND=0.0.0.0 to open it to phones and tablets on the network.
+      - "${MEDBASE_HTTPS_BIND:-127.0.0.1}:${MEDBASE_HTTPS_PORT:-8443}:443"
       # Corridor board (no login). Local only by default; for real corridor screens
       # publish it on the hospital network interface (decisions.md, record 15).
       # MEDBASE_BOARD_PORT changes the host port if 8081 is taken.
@@ -48,3 +57,4 @@ services:
 
 volumes:
   medbase-data:
+  medbase-certs:

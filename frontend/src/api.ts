@@ -473,3 +473,20 @@ export function getAssignmentLog(wardId: number | null, limit = 50): Promise<Ass
   if (wardId !== null) params.set("ward_id", String(wardId));
   return request(`/api/assignments/log?${params}`);
 }
+
+// --- Badges with a barcode (head nurse) ------------------------------------------------------
+
+export type Badge = {
+  person_id: string;
+  full_name: string;
+  role: string;
+  badge_id: string;
+};
+
+export function getBadges(): Promise<Badge[]> {
+  return request("/api/badges");
+}
+
+export function reissueBadge(personId: string): Promise<Badge> {
+  return request(`/api/badges/${encodeURIComponent(personId)}/reissue`, { method: "POST" });
+}

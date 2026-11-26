@@ -15,6 +15,8 @@
 
 \echo '>> 06_login_security.sql'
 \ir 06_login_security.sql
+\echo '>> 07_badges.sql'
+\ir 07_badges.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
 

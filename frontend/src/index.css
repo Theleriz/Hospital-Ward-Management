@@ -1581,3 +1581,182 @@ button.danger:where(:hover:not(:disabled)) {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* --- Badges with a barcode (print page, camera scan) ---------------------- */
+
+.badges-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.badges-toolbar label {
+  flex: 1 1 240px;
+}
+
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.badge-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The badge itself: always light, like the printed card */
+.badge-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid #cfd6e2;
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: #111827;
+  text-align: center;
+}
+
+.badge-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: stretch;
+  justify-content: center;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e2e7ef;
+  font-weight: 700;
+  color: #0f8a83;
+}
+
+.badge-card-name {
+  font-size: 17px;
+}
+
+.badge-card-role {
+  color: #5c6678;
+  font-size: 13.5px;
+}
+
+.badge-barcode {
+  max-width: 100%;
+  height: auto;
+  margin-top: 6px;
+}
+
+.badge-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.badge-actions button {
+  flex: 1;
+}
+
+dialog.scanner,
+dialog.confirm-dialog {
+  width: min(480px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+dialog.scanner[open],
+dialog.confirm-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+dialog.scanner h1,
+dialog.confirm-dialog h1 {
+  margin: 0;
+  font-size: 19px;
+}
+
+dialog.confirm-dialog p {
+  margin: 0;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(10 16 24 / 55%);
+}
+
+.scanner-view {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: #000000;
+  aspect-ratio: 4 / 3;
+}
+
+.scanner-view video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Where to hold the barcode */
+.scanner-line {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 50%;
+  height: 2px;
+  background: #ff3b3b;
+  box-shadow: 0 0 8px #ff3b3b;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media print {
+  .sidebar,
+  .page-header,
+  .no-print,
+  .badge-item[data-print="no"] {
+    display: none !important;
+  }
+
+  body,
+  .main,
+  .shell {
+    background: #ffffff !important;
+  }
+
+  .main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .badges-grid {
+    grid-template-columns: repeat(2, 86mm);
+    gap: 6mm;
+  }
+
+  /* Credit-card size badge */
+  .badge-card {
+    width: 86mm;
+    min-height: 54mm;
+    break-inside: avoid;
+    print-color-adjust: exact;
+  }
+}
