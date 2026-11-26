@@ -128,6 +128,9 @@ function cell(nurse: string, ward: string) {
   };
 }
 
+/** Why an option is unavailable: the hint on its label (a disabled button gets no pointer events) */
+const hint = (button: HTMLElement) => button.querySelector("[title]")?.getAttribute("title") ?? "";
+
 afterEach(() => cleanup());
 
 // --- The table ---------------------------------------------------------------------------------
@@ -173,7 +176,7 @@ describe("one primary nurse per ward", () => {
 
     expect(primary.none.disabled).toBe(true);
     expect(primary.additional.disabled).toBe(true);
-    expect(primary.none.title).toBe("Основную нельзя снять: назначьте другую основную");
+    expect(hint(primary.none)).toBe("Основную нельзя снять: назначьте другую основную");
   });
 
   it("does not let an off-shift nurse be assigned, but lets her be taken off", async () => {
@@ -182,7 +185,7 @@ describe("one primary nurse per ward", () => {
     const icu = cell("Saule Bekova", "ICU Unit A");
     expect(icu.additional.disabled).toBe(true);
     expect(icu.primary.disabled).toBe(true);
-    expect(icu.primary.title).toBe("Медсестра не на смене");
+    expect(hint(icu.primary)).toBe("Медсестра не на смене");
     expect(cell("Saule Bekova", "Emergency Overflow Ward").none.disabled).toBe(false);
   });
 
@@ -275,7 +278,7 @@ describe("changes", () => {
 
     await waitFor(() => expect(cell("Aliya Nurlanova", "Emergency Overflow Ward").none.disabled).toBe(true));
     expect(cell("Aliya Nurlanova", "ICU Unit A").additional.disabled).toBe(true);
-    expect(cell("Dinara Omarova", "ICU Unit A").group.getAttribute("aria-busy")).toBe("true");
+    expect(cell("Dinara Omarova", "ICU Unit A").group.closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true");
 
     finish({ status: 200 });
     await waitFor(() => expect(cell("Aliya Nurlanova", "ICU Unit A").additional.disabled).toBe(false));
@@ -319,7 +322,7 @@ describe("journal", () => {
   it("shows who changed what, when and why; automatic handoffs say so", async () => {
     await show({ log: [SWAP, HANDOFF] });
 
-    const journal = screen.getByRole("heading", { name: "Журнал назначений" }).closest("section")!;
+    const journal = screen.getByLabelText("Журнал назначений");
     const [, swap, handoff] = within(journal).getAllByRole("row");
     expect(swap!.textContent).toContain("ICU Unit A");
     expect(swap!.textContent).toContain("Новая основная");
@@ -343,7 +346,8 @@ describe("journal", () => {
     const fake = await show();
     expect(fake.reads).toContain("/api/assignments/log?limit=50");
 
-    fireEvent.change(screen.getByLabelText("Палата в журнале"), { target: { value: "101" } });
+    fireEvent.click(screen.getByRole("button", { name: /Палата в журнале/ }));
+    fireEvent.click(await screen.findByRole("option", { name: "ICU Unit A" }));
 
     await waitFor(() => expect(fake.reads).toContain("/api/assignments/log?limit=50&ward_id=101"));
   });

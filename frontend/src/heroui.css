@@ -1,0 +1,56 @@
+/* HeroUI v3 (Tailwind CSS v4) for the screens that use it, starting with "Назначения".
+   The full @heroui/styles entry also loads Tailwind's preflight, which would restyle
+   every screen still written with index.css. So: everything except preflight.
+   Our own tokens in index.css are not layered, so where names match (--accent,
+   --border, --muted, --focus) HeroUI components take the MedBase colours. */
+/* legacy: element styles from index.css, above HeroUI base, below its components */
+@layer theme, base, legacy, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@import "@heroui/styles/base" layer(base);
+/* Only the components the HeroUI screens use: index.css has its own .avatar, .badge,
+   .meter and .toolbar, and the full set would restyle them on every other screen. */
+@import "@heroui/styles/components/card.css" layer(components);
+@import "@heroui/styles/components/alert.css" layer(components);
+@import "@heroui/styles/components/chip.css" layer(components);
+@import "@heroui/styles/components/label.css" layer(components);
+@import "@heroui/styles/components/description.css" layer(components);
+@import "@heroui/styles/components/input.css" layer(components);
+@import "@heroui/styles/components/textfield.css" layer(components);
+@import "@heroui/styles/components/toggle-button.css" layer(components);
+@import "@heroui/styles/components/toggle-button-group.css" layer(components);
+@import "@heroui/styles/components/popover.css" layer(components);
+@import "@heroui/styles/components/list-box.css" layer(components);
+@import "@heroui/styles/components/list-box-item.css" layer(components);
+@import "@heroui/styles/components/select.css" layer(components);
+@import "@heroui/styles/components/table.css" layer(components);
+@import "@heroui/styles/themes/default" layer(theme);
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";
+
+/* Tailwind scans these files for class names */
+@source "./AssignmentsPage.tsx";
+
+/* .card and .alert are also index.css classes on the older screens. HeroUI marks its
+   own elements with data-slot; for the others its component rules are rolled back,
+   so they look exactly as index.css draws them. */
+@layer components {
+  .card:not([data-slot]),
+  .alert:not([data-slot]) {
+    position: revert-layer;
+    display: revert-layer;
+    flex-direction: revert-layer;
+    align-items: revert-layer;
+    justify-content: revert-layer;
+    gap: revert-layer;
+    overflow: revert-layer;
+    padding: revert-layer;
+    width: revert-layer;
+    background-color: revert-layer;
+    box-shadow: revert-layer;
+    border-radius: revert-layer;
+  }
+}

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { Alert, Card, Chip, Input, Label, ListBox, Select, Table, TextField, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { useCallback, useEffect, useState, type Key } from "react";
 
 import {
   addWardNurse,
@@ -15,20 +16,18 @@ import {
   type WardAssignment,
 } from "./api";
 
+// "Назначения" is the first screen built with HeroUI (src/heroui.css); the other
+// screens still use index.css. Labels and roles are the same as before, so the
+// unit and end-to-end tests read the screen the same way.
+
 type Notice = { kind: "ok" | "error"; text: string } | null;
 
 type Cell = "none" | "additional" | "primary";
 
-const STATUS_LABELS: Record<NurseStatus, string> = {
-  Available: "Свободна",
-  Busy: "Занята",
-  OffShift: "Не на смене",
-};
-
-const STATUS_BADGE: Record<NurseStatus, string> = {
-  Available: "badge badge-ok",
-  Busy: "badge badge-warn",
-  OffShift: "badge badge-muted",
+const STATUS: Record<NurseStatus, { label: string; color: "success" | "warning" | "default" }> = {
+  Available: { label: "Свободна", color: "success" },
+  Busy: { label: "Занята", color: "warning" },
+  OffShift: { label: "Не на смене", color: "default" },
 };
 
 const ACTION_LABELS: Record<AssignmentAction, string> = {
@@ -36,6 +35,13 @@ const ACTION_LABELS: Record<AssignmentAction, string> = {
   ASSIGN_ADDITIONAL: "Добавлена дополнительная",
   REMOVE_ADDITIONAL: "Снята дополнительная",
   AUTO_ASSIGN_PRIMARY: "Автоназначение основной",
+};
+
+const ACTION_COLORS: Record<AssignmentAction, "accent" | "success" | "danger" | "warning"> = {
+  ASSIGN_PRIMARY: "accent",
+  ASSIGN_ADDITIONAL: "success",
+  REMOVE_ADDITIONAL: "danger",
+  AUTO_ASSIGN_PRIMARY: "warning",
 };
 
 const TIME = new Intl.DateTimeFormat("ru-RU", {
@@ -46,6 +52,8 @@ const TIME = new Intl.DateTimeFormat("ru-RU", {
   second: "2-digit",
 });
 
+const ALL_WARDS = "all";
+
 function messageOf(error: unknown): string {
   return error instanceof ApiError ? error.message : "Сервер недоступен";
 }
@@ -54,6 +62,15 @@ function cellOf(ward: WardAssignment, nurseId: string): Cell {
   const nurse = ward.nurses.find((n) => n.nurse_id === nurseId);
   if (!nurse) return "none";
   return nurse.is_primary ? "primary" : "additional";
+}
+
+function initials(fullName: string): string {
+  return fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join("");
 }
 
 /** Head nurse: who works in which ward, primary and additional nurses (T-51). */
@@ -113,81 +130,165 @@ export default function AssignmentsPage() {
   }
 
   if (!board) {
-    return notice ? <p className="notice notice-error" role="alert">{notice.text}</p> : <div className="card" aria-busy="true" />;
+    return notice ? (
+      <NoticeAlert notice={notice} />
+    ) : (
+      <Card aria-busy="true" className="h-40 animate-pulse">
+        <span className="sr-only">Загрузка…</span>
+      </Card>
+    );
   }
 
-  return (
-    <div className="stack">
-      {notice && (
-        <p className={`notice notice-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          {notice.text}
-        </p>
-      )}
+  const assigned = board.wards.reduce((n, w) => n + w.nurses.length, 0);
 
-      <section className="card">
-        <div className="section-head">
-          <h2>Медсёстры и палаты</h2>
-          <span className="badge badge-muted">{board.wards.length} палат</span>
-        </div>
-        <p className="hint">
-          В каждой палате ровно одна основная медсестра: она получает оповещения палаты первой. Снять основную
-          нельзя — назначьте вместо неё другую, и прежняя останется дополнительной.
-        </p>
-        <label className="assign-reason">
-          Причина изменения (необязательно, попадёт в журнал)
-          <input
-            value={reason}
-            maxLength={200}
-            placeholder="например, пересменка"
-            onChange={(e) => setReason(e.target.value)}
-          />
-        </label>
-        <div className="table-wrap">
-          <table className="table assign-table">
-            <thead>
-              <tr>
-                <th>Медсестра</th>
-                {board.wards.map((w) => (
-                  <th key={w.ward_id}>
-                    {w.ward_name}
-                    <span className="hint block">№ {w.ward_id}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {board.nurses.map((nurse) => (
-                <tr key={nurse.nurse_id}>
-                  <td>
-                    <strong>{nurse.full_name}</strong>
-                    <span className="hint block">
-                      {nurse.nurse_id}
-                      {nurse.role === "HeadNurse" ? " · старшая" : ""}
-                    </span>
-                    <span className={STATUS_BADGE[nurse.status]}>{STATUS_LABELS[nurse.status]}</span>
-                  </td>
-                  {board.wards.map((ward) => (
-                    <td key={ward.ward_id}>
-                      <AssignmentCell
-                        ward={ward}
-                        nurse={nurse}
-                        busy={saving !== null}
-                        saving={saving === `${ward.ward_id}:${nurse.nurse_id}`}
-                        onChange={(to) => change(ward, nurse, to)}
-                      />
-                    </td>
+  return (
+    <div className="flex flex-col gap-5">
+      {notice && <NoticeAlert notice={notice} />}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Палат" value={board.wards.length} />
+        <Stat label="Медсестёр" value={board.nurses.length} />
+        <Stat label="Назначений" value={assigned} />
+      </div>
+
+      <Card>
+        <Card.Header className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div>
+            <Card.Title render={(props) => <h2 {...props} />}>Медсёстры и палаты</Card.Title>
+            <Card.Description>
+              В каждой палате ровно одна основная медсестра: она получает оповещения палаты первой. Снять основную
+              нельзя — назначьте вместо неё другую, и прежняя останется дополнительной.
+            </Card.Description>
+          </div>
+          <Chip variant="soft">{board.wards.length} палат</Chip>
+        </Card.Header>
+
+        <Card.Content className="flex flex-col gap-4">
+          <TextField className="max-w-md" value={reason} onChange={setReason} maxLength={200}>
+            <Label>Причина изменения (необязательно, попадёт в журнал)</Label>
+            <Input placeholder="например, пересменка" />
+          </TextField>
+
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-[var(--surface-2)] text-left text-xs uppercase tracking-wide text-[var(--muted)]">
+                  <th className="min-w-56 px-4 py-3 font-semibold">Медсестра</th>
+                  {board.wards.map((w) => (
+                    <th key={w.ward_id} className="px-3 py-3 font-semibold">
+                      {w.ward_name}
+                      <span className="block font-normal normal-case">№ {w.ward_id}</span>
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+              </thead>
+              <tbody>
+                {board.nurses.map((nurse) => (
+                  <tr key={nurse.nurse_id} className="border-t border-[var(--border)] hover:bg-[var(--surface-2)]">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-bg)] text-xs font-bold text-[var(--accent)]"
+                        >
+                          {initials(nurse.full_name)}
+                        </span>
+                        <div className="flex flex-col gap-1">
+                          <strong className="whitespace-nowrap text-[var(--text)]">{nurse.full_name}</strong>
+                          <span className="text-xs text-[var(--muted)]">
+                            {nurse.nurse_id}
+                            {nurse.role === "HeadNurse" ? " · старшая" : ""}
+                          </span>
+                          <Chip size="sm" variant="soft" color={STATUS[nurse.status].color} className="w-fit">
+                            {STATUS[nurse.status].label}
+                          </Chip>
+                        </div>
+                      </div>
+                    </td>
+                    {board.wards.map((ward) => (
+                      <td key={ward.ward_id} className="px-3 py-3">
+                        <AssignmentCell
+                          ward={ward}
+                          nurse={nurse}
+                          busy={saving !== null}
+                          saving={saving === `${ward.ward_id}:${nurse.nurse_id}`}
+                          onChange={(to) => change(ward, nurse, to)}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <Legend />
+        </Card.Content>
+      </Card>
 
       <AssignmentLog entries={log} wards={board.wards} ward={logWard} onWard={setLogWard} />
     </div>
   );
 }
+
+function NoticeAlert({ notice }: { notice: NonNullable<Notice> }) {
+  return (
+    <Alert status={notice.kind === "error" ? "danger" : "success"} role={notice.kind === "error" ? "alert" : "status"}>
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Description>{notice.text}</Alert.Description>
+      </Alert.Content>
+    </Alert>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <Card>
+      <Card.Content className="flex flex-col gap-1">
+        <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">{label}</span>
+        <span className="text-3xl font-bold tabular-nums text-[var(--text)]">{value}</span>
+      </Card.Content>
+    </Card>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--muted)]">
+      <span className="flex items-center gap-2">
+        <span className="rounded-md bg-[var(--accent)] px-2 py-0.5 font-semibold text-white">Осн.</span>
+        основная: оповещения палаты идут ей первой
+      </span>
+      <span className="flex items-center gap-2">
+        <span className="rounded-md bg-[var(--accent-bg)] px-2 py-0.5 font-semibold text-[var(--accent)]">Доп.</span>
+        дополнительная: видит оповещения палаты
+      </span>
+      <span className="flex items-center gap-2">
+        <span className="rounded-md border border-[var(--border)] px-2 py-0.5">—</span>
+        не работает в палате
+      </span>
+    </div>
+  );
+}
+
+const OPTIONS: { value: Cell; label: string; selected: string }[] = [
+  {
+    value: "none",
+    label: "—",
+    selected: "data-[selected=true]:!bg-[var(--border-strong)] data-[selected=true]:!text-[var(--text)]",
+  },
+  {
+    value: "additional",
+    label: "Доп.",
+    selected: "data-[selected=true]:!bg-[var(--accent-bg)] data-[selected=true]:!text-[var(--accent)]",
+  },
+  {
+    value: "primary",
+    label: "Осн.",
+    selected: "data-[selected=true]:!bg-[var(--accent)] data-[selected=true]:!text-white",
+  },
+];
 
 function AssignmentCell({
   ward,
@@ -213,37 +314,37 @@ function AssignmentCell({
     return null;
   };
 
-  const options: { value: Cell; label: string; className: string }[] = [
-    { value: "none", label: "—", className: "" },
-    { value: "additional", label: "Доп.", className: "assign-additional" },
-    { value: "primary", label: "Осн.", className: "segment-accent" },
-  ];
-
   return (
-    <div
-      className="segmented assign-cell"
-      role="radiogroup"
-      aria-label={`${nurse.full_name}, ${ward.ward_name}`}
-      aria-busy={saving}
-    >
-      {options.map((o) => {
-        const reason = blocked(o.value);
-        const active = o.value === current;
-        return (
-          <button
-            key={o.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            className={active ? `segment segment-active ${o.className}` : "segment"}
-            disabled={busy || reason !== null}
-            title={reason ?? undefined}
-            onClick={() => onChange(o.value)}
-          >
-            {o.label}
-          </button>
-        );
-      })}
+    // aria-busy on a wrapper: ToggleButtonGroup passes only its own props to the DOM
+    <div aria-busy={saving}>
+      <ToggleButtonGroup
+        aria-label={`${nurse.full_name}, ${ward.ward_name}`}
+        selectionMode="single"
+        disallowEmptySelection
+        size="sm"
+        selectedKeys={[current]}
+        onSelectionChange={(keys: Set<Key>) => {
+          const [next] = keys;
+          if (next) onChange(next as Cell);
+        }}
+        isDisabled={busy}
+        className={saving ? "animate-pulse" : undefined}
+      >
+        {OPTIONS.map((o) => {
+          const reason = blocked(o.value);
+          return (
+            <ToggleButton
+              key={o.value}
+              id={o.value}
+              isDisabled={reason !== null}
+              className={`min-w-11 font-semibold ${o.selected}`}
+            >
+              {/* The title lives on the label: a disabled button gets no pointer events */}
+              <span title={reason ?? undefined}>{o.label}</span>
+            </ToggleButton>
+          );
+        })}
+      </ToggleButtonGroup>
     </div>
   );
 }
@@ -260,57 +361,76 @@ function AssignmentLog({
   onWard: (ward: number | null) => void;
 }) {
   return (
-    <section className="card">
-      <div className="section-head">
-        <h2>Журнал назначений</h2>
-        <select
+    <Card>
+      <Card.Header className="flex flex-row flex-wrap items-center justify-between gap-3">
+        <Card.Title render={(props) => <h2 {...props} />}>Журнал назначений</Card.Title>
+        <Select
           aria-label="Палата в журнале"
-          value={ward ?? ""}
-          onChange={(e) => onWard(e.target.value ? Number(e.target.value) : null)}
+          className="w-60"
+          selectedKey={ward === null ? ALL_WARDS : String(ward)}
+          onSelectionChange={(key) => onWard(key === ALL_WARDS || key === null ? null : Number(key))}
         >
-          <option value="">все палаты</option>
-          {wards.map((w) => (
-            <option key={w.ward_id} value={w.ward_id}>
-              {w.ward_name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {entries.length === 0 ? (
-        <p className="empty">Изменений пока не было</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Когда</th>
-                <th>Палата</th>
-                <th>Что</th>
-                <th>Медсестра</th>
-                <th>Кто изменил</th>
-                <th>Причина</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.log_id}>
-                  <td className="num">{TIME.format(new Date(e.changed_at))}</td>
-                  <td>{e.ward_name}</td>
-                  <td>
-                    {ACTION_LABELS[e.action]}
-                    {e.previous_primary_nurse_id && e.action.endsWith("PRIMARY") && (
-                      <span className="hint block">вместо {e.previous_primary_nurse_id}</span>
-                    )}
-                  </td>
-                  <td>{e.nurse_name}</td>
-                  <td>{e.changed_by_name ?? "автоматически"}</td>
-                  <td>{e.reason ?? "—"}</td>
-                </tr>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id={ALL_WARDS} textValue="все палаты">
+                все палаты
+              </ListBox.Item>
+              {wards.map((w) => (
+                <ListBox.Item key={w.ward_id} id={String(w.ward_id)} textValue={w.ward_name}>
+                  {w.ward_name}
+                </ListBox.Item>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+            </ListBox>
+          </Select.Popover>
+        </Select>
+      </Card.Header>
+      <Card.Content>
+        <Table>
+          <Table.ScrollContainer>
+            <Table.Content aria-label="Журнал назначений">
+              <Table.Header>
+                <Table.Column isRowHeader>Когда</Table.Column>
+                <Table.Column>Палата</Table.Column>
+                <Table.Column>Что</Table.Column>
+                <Table.Column>Медсестра</Table.Column>
+                <Table.Column>Кто изменил</Table.Column>
+                <Table.Column>Причина</Table.Column>
+              </Table.Header>
+              <Table.Body
+                renderEmptyState={() => (
+                  <p className="py-6 text-center text-sm text-[var(--muted)]">Изменений пока не было</p>
+                )}
+              >
+                {entries.map((e) => (
+                  <Table.Row key={e.log_id} id={e.log_id}>
+                    <Table.Cell>
+                      <span className="tabular-nums">{TIME.format(new Date(e.changed_at))}</span>
+                    </Table.Cell>
+                    <Table.Cell>{e.ward_name}</Table.Cell>
+                    <Table.Cell>
+                      <div className="flex flex-col gap-1">
+                        <Chip size="sm" variant="soft" color={ACTION_COLORS[e.action]} className="w-fit">
+                          {ACTION_LABELS[e.action]}
+                        </Chip>
+                        {e.previous_primary_nurse_id && e.action.endsWith("PRIMARY") && (
+                          <span className="text-xs text-[var(--muted)]">вместо {e.previous_primary_nurse_id}</span>
+                        )}
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>{e.nurse_name}</Table.Cell>
+                    <Table.Cell>{e.changed_by_name ?? "автоматически"}</Table.Cell>
+                    <Table.Cell>{e.reason ?? "—"}</Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
+      </Card.Content>
+    </Card>
   );
 }
