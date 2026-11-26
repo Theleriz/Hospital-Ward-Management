@@ -43,7 +43,8 @@ test("the primary nurse cannot be taken off, only replaced", async ({ page }) =>
   await expect(aliya.primary).toHaveAttribute("aria-checked", "true");
   await expect(aliya.none).toBeDisabled();
   await expect(aliya.additional).toBeDisabled();
-  await expect(aliya.none).toHaveAttribute("title", "Основную нельзя снять: назначьте другую основную");
+  // The hint is on the label: a disabled button gets no pointer events
+  await expect(aliya.none.locator("[title]")).toHaveAttribute("title", "Основную нельзя снять: назначьте другую основную");
 });
 
 test("a new primary nurse gets the ward's next alert, and the change is in the journal", async ({ page }) => {
@@ -61,7 +62,8 @@ test("a new primary nurse gets the ward's next alert, and the change is in the j
   await expect(cell(page, "Aliya Nurlanova").additional).toHaveAttribute("aria-checked", "true");
 
   // 2. The journal says who, when and what
-  const entry = page.getByRole("row", { name: new RegExp(reason) });
+  // A HeroUI table row is named by its row header (the time), so find it by its text
+  const entry = page.getByRole("row").filter({ hasText: reason });
   await expect(entry).toContainText("Новая основная");
   await expect(entry).toContainText("вместо NURSE-04");
   await expect(entry).toContainText("Madina Tulegenova");

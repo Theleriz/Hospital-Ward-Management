@@ -20,10 +20,21 @@ function systemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** HeroUI components switch to dark by the "dark" class on <html>; keep it in step
+ * with the theme the rest of the app shows (the system setting or the toggle). */
+function syncHeroUiTheme(theme: Theme): void {
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
+
 /** Called once before the first render, so the page never flashes the wrong theme. */
 export function applyStoredTheme(): void {
   const theme = storedTheme();
   if (theme) document.documentElement.dataset.theme = theme;
+  syncHeroUiTheme(theme ?? systemTheme());
+  // Before sign-in nothing else listens to the system setting
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (!storedTheme()) syncHeroUiTheme(systemTheme());
+  });
 }
 
 export function useTheme(): [Theme, () => void] {
@@ -48,6 +59,8 @@ export function useTheme(): [Theme, () => void] {
     }
     setTheme(next);
   }
+
+  useEffect(() => syncHeroUiTheme(theme), [theme]);
 
   return [theme, toggle];
 }

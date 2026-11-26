@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -6,7 +7,8 @@ import react from "@vitejs/plugin-react";
 // Two pages: the staff app (index.html) and the corridor board (board.html),
 // which nginx serves on its own port (nginx.conf).
 export default defineConfig({
-  plugins: [react()],
+  // Tailwind CSS v4 for HeroUI (src/heroui.css)
+  plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: {
       input: {
