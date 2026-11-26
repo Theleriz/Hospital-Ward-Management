@@ -32,5 +32,17 @@ class Settings(BaseSettings):
     # Turn off for any real installation.
     simulator_enabled: bool = True
 
+    # Corridor board (part 4): no login, so access is limited by where the request comes from.
+    # Comma-separated networks that may open the board: loopback and private ranges by default.
+    board_allowed_networks: str = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    # Comma-separated secret tokens of known screens outside those networks (sent as
+    # X-Board-Screen); empty means none. Use long random values.
+    board_screen_tokens: str = ""
+    # Proxies whose X-Real-IP header is believed (the board's nginx); requests from any
+    # other address are judged by their own address, so the header cannot be forged.
+    board_trusted_proxies: str = "127.0.0.0/8,::1/128,172.16.0.0/12"
+    # How often the board asks for a new summary (the task asks for 1-2 seconds)
+    board_refresh_seconds: float = Field(default=1.5, ge=1.0, le=2.0)
+
 
 settings = Settings()

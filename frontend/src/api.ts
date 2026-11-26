@@ -69,6 +69,8 @@ const FIELD_LABELS: Record<string, string> = {
   measurement_confirmed: "достоверность измерений",
   scale2_confirmed: "подтверждение шкалы SpO₂ 2",
   spo2_scale: "шкала SpO₂",
+  nurse_id: "медсестра",
+  reason: "причина",
 };
 
 // FastAPI puts the message in "detail": a string, or a list of invalid fields
@@ -496,4 +498,74 @@ export function assessMaternalMews(input: MaternalMewsInput): Promise<MaternalMe
   return request("/api/simulator/assess-maternal-mews", {
     method: "POST", body: JSON.stringify(input),
   });
+}
+
+// --- Ward nurse assignments (head nurse, T-51) -----------------------------------------------
+
+export type AssignedNurse = {
+  nurse_id: string;
+  full_name: string;
+  status: NurseStatus;
+  is_primary: boolean;
+};
+
+export type WardAssignment = {
+  ward_id: number;
+  ward_name: string;
+  primary_nurse_id: string | null;
+  nurses: AssignedNurse[];
+};
+
+export type NurseOption = {
+  nurse_id: string;
+  full_name: string;
+  role: Role;
+  status: NurseStatus;
+};
+
+export type AssignmentBoard = { wards: WardAssignment[]; nurses: NurseOption[] };
+
+export type AssignmentAction = "ASSIGN_PRIMARY" | "ASSIGN_ADDITIONAL" | "REMOVE_ADDITIONAL" | "AUTO_ASSIGN_PRIMARY";
+
+export type AssignmentLogEntry = {
+  log_id: number;
+  changed_at: string;
+  ward_id: number;
+  ward_name: string;
+  action: AssignmentAction;
+  nurse_id: string;
+  nurse_name: string;
+  previous_primary_nurse_id: string | null;
+  changed_by_nurse_id: string | null;
+  changed_by_name: string | null;
+  reason: string | null;
+};
+
+export function getAssignments(): Promise<AssignmentBoard> {
+  return request("/api/assignments");
+}
+
+export function setPrimaryNurse(wardId: number, nurseId: string, reason: string | null): Promise<WardAssignment> {
+  return request(`/api/assignments/${wardId}/primary`, {
+    method: "PUT",
+    body: JSON.stringify({ nurse_id: nurseId, reason }),
+  });
+}
+
+export function addWardNurse(wardId: number, nurseId: string, reason: string | null): Promise<WardAssignment> {
+  return request(`/api/assignments/${wardId}/nurses`, {
+    method: "POST",
+    body: JSON.stringify({ nurse_id: nurseId, reason }),
+  });
+}
+
+export function removeWardNurse(wardId: number, nurseId: string, reason: string | null): Promise<void> {
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request(`/api/assignments/${wardId}/nurses/${encodeURIComponent(nurseId)}${query}`, { method: "DELETE" });
+}
+
+export function getAssignmentLog(wardId: number | null, limit = 50): Promise<AssignmentLogEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (wardId !== null) params.set("ward_id", String(wardId));
+  return request(`/api/assignments/log?${params}`);
 }

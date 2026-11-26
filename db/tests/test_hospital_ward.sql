@@ -79,9 +79,9 @@ $$;
 -- -----------------------------------------------------------------------------
 -- 0. Seed state
 -- -----------------------------------------------------------------------------
-CALL pg_temp.expect_true('seed: 8 patients, 4 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
+CALL pg_temp.expect_true('seed: 8 patients, 5 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
     SELECT (SELECT COUNT(*) FROM "Patient") = 8
-       AND (SELECT COUNT(*) FROM "Ward") = 4
+       AND (SELECT COUNT(*) FROM "Ward") = 5
        AND (SELECT COUNT(*) FROM "Admission") = 6
        AND (SELECT COUNT(*) FROM "Nurse") = 6
        AND (SELECT COUNT(*) FROM "NurseAssignment") = 7
@@ -123,6 +123,20 @@ CALL pg_temp.expect_true('seed: nurse PINs are bcrypt hashes of the documented t
 CALL pg_temp.expect_true('view: ward 101 is full, ward 102 has 2 free beds', $q$
     SELECT (SELECT "AvailableBeds" FROM "vw_WardCapacity" WHERE "WardID" = 101) = 0
        AND (SELECT "AvailableBeds" FROM "vw_WardCapacity" WHERE "WardID" = 102) = 2 $q$);
+
+-- Corridor board view (part 4): only ward, priority and timing of active alerts
+CALL pg_temp.expect_true('corridor view: the 3 active seed alerts, acknowledged ones left out', $q$
+    SELECT array_agg(("WardID", "Priority", "Status")::TEXT ORDER BY "CreatedAt")
+           = ARRAY['(101,CRITICAL,ESCALATED)', '(101,CRITICAL,PENDING)', '(102,HIGH,PENDING)']
+    FROM "vw_CorridorAlerts" $q$);
+
+CALL pg_temp.expect_true('corridor view: ALT-1003 escalated to NURSE-03 from another ward is an outside call', $q$
+    SELECT "IsEscalated" AND "OutsideCall" AND NOT "NoNurse" AND "WaitingSeconds" >= 1800
+    FROM "vw_CorridorAlerts" WHERE "Status" = 'ESCALATED' $q$);
+
+CALL pg_temp.expect_true('corridor view: pending alerts are not escalated and have a nurse', $q$
+    SELECT bool_and(NOT "IsEscalated" AND NOT "OutsideCall" AND NOT "NoNurse")
+    FROM "vw_CorridorAlerts" WHERE "Status" = 'PENDING' $q$);
 
 -- -----------------------------------------------------------------------------
 -- 1. Constraints (PK / FK / CHECK / UNIQUE / NOT NULL)
@@ -809,8 +823,141 @@ CALL pg_temp.expect_error('backend role cannot read PIN hashes of staff accounts
 CALL pg_temp.expect_true('backend role can switch to every user role but inherits none of them', $q$
     SELECT bool_and(pg_has_role('medbase_api', r, 'SET') AND NOT pg_has_role('medbase_api', r, 'USAGE'))
     FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_head_nurse',
+                  'medbase_alert_service', 'medbase_board']) r $q$);
+
+-- -----------------------------------------------------------------------------
+-- 12. Corridor board (part 4, NFR-03): role medbase_board sees no patient data
+-- -----------------------------------------------------------------------------
+CALL pg_temp.expect_true('corridor view has no patient, description or nurse columns', $q$
+    SELECT array_agg(column_name::TEXT ORDER BY column_name::TEXT)
+           = ARRAY['CreatedAt', 'IsEscalated', 'NoNurse', 'OutsideCall', 'Priority', 'Status',
+                   'WaitingSeconds', 'WardID']
+    FROM information_schema.columns WHERE table_name = 'vw_CorridorAlerts' $q$);
+
+CALL pg_temp.expect_true('corridor view lists exactly the alerts nobody acknowledged yet', $q$
+    SELECT (SELECT COUNT(*) FROM "vw_CorridorAlerts")
+         = (SELECT COUNT(*) FROM "WardAlert" WHERE "Status" <> 'ACKNOWLEDGED') $q$);
+
+CALL pg_temp.expect_ok('board role reads the corridor view and ward capacity', $q$
+    SELECT 1 FROM "vw_CorridorAlerts", "vw_WardCapacity" LIMIT 1 $q$, 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read alerts with descriptions', $q$
+    SELECT * FROM "WardAlert" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read patients', $q$
+    SELECT * FROM "Patient" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read admissions', $q$
+    SELECT * FROM "Admission" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read nurses', $q$
+    SELECT * FROM "Nurse" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read the head nurse report', $q$
+    SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot acknowledge alerts', $q$
+    CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_true('no user role is a member of the board role, and it is a member of none', $q$
+    SELECT bool_and(NOT pg_has_role(r, 'medbase_board', 'MEMBER') AND NOT pg_has_role('medbase_board', r, 'MEMBER'))
+    FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_head_nurse',
                   'medbase_alert_service']) r $q$);
 
 -- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- 13. Ward nurse assignments, best-nurse algorithm & audit log (T-51)
+-- -----------------------------------------------------------------------------
+CALL pg_temp.expect_error('cannot delete the primary nurse of a ward directly', $q$
+    DELETE FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary" $q$,
+    'Ward ID 104 must have exactly one primary nurse%');
+
+CALL pg_temp.expect_error('cannot demote the primary nurse directly without replacement', $q$
+    UPDATE "NurseAssignment" SET "IsPrimary" = FALSE WHERE "WardID" = 101 AND "IsPrimary" $q$,
+    'Ward ID 101 must have exactly one primary nurse%');
+
+CALL pg_temp.expect_error('manual assignment requires ChangedByNurseID', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-03', FALSE, NULL, 'Missing actor') $q$,
+    'ChangedByNurseID is required%');
+
+CALL pg_temp.expect_error('head nurse cannot demote primary nurse via sp_AssignWardNurse', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-01', FALSE, 'NURSE-10', 'Invalid demote') $q$,
+    'Cannot demote primary nurse NURSE-01 of Ward ID 101 without assigning a new primary nurse first%');
+
+CALL pg_temp.expect_error('head nurse cannot remove primary nurse via sp_RemoveAdditionalNurse', $q$
+    CALL sp_RemoveAdditionalNurse(101, 'NURSE-01', 'NURSE-10', 'Invalid remove') $q$,
+    'Cannot remove primary nurse NURSE-01 from Ward ID 101%');
+
+CALL pg_temp.expect_error('off-shift nurse cannot be assigned to a ward', $q$
+    CALL sp_AssignWardNurse(104, 'NURSE-05', TRUE, 'NURSE-10', 'Off-shift test') $q$,
+    'Nurse NURSE-05 is off shift%');
+
+-- Head nurse assigns NURSE-03 as additional nurse to Ward 101, then swaps primary nurse to NURSE-02
+CALL pg_temp.expect_ok('head nurse assigns additional nurse NURSE-03 to Ward 101', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-03', FALSE, 'NURSE-10', 'Extra coverage for ICU') $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_ok('head nurse replaces primary nurse of Ward 101 with NURSE-02', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-02', TRUE, 'NURSE-10', 'Shift rotation') $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_true('Ward 101 still has exactly one primary nurse (NURSE-02), NURSE-01 kept as additional', $q$
+    SELECT (SELECT COUNT(*) FROM "NurseAssignment" WHERE "WardID" = 101 AND "IsPrimary") = 1
+       AND (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 101 AND "IsPrimary") = 'NURSE-02'
+       AND EXISTS (SELECT 1 FROM "NurseAssignment"
+                   WHERE "WardID" = 101 AND "NurseID" = 'NURSE-01' AND NOT "IsPrimary") $q$);
+
+-- Existing alerts stay with NURSE-01; new alerts route to the new primary nurse NURSE-02
+CALL pg_temp.expect_ok('new alert in Ward 101 goes to new primary nurse NURSE-02', $q$
+    CALL sp_RaiseAlert(101, 1, 'MONITOR', 'HIGH', 'Post-handoff alert', 'NURSE-02', NULL) $q$);
+
+CALL pg_temp.expect_true('seed ALT-1001 stayed with NURSE-01 while new alert went to NURSE-02', $q$
+    SELECT (SELECT "AssignedNurseID" FROM "WardAlert" WHERE "AlertID" = 'ALT-1001') = 'NURSE-01'
+       AND (SELECT "AssignedNurseID" FROM "WardAlert"
+            WHERE "Description" = 'Post-handoff alert') = 'NURSE-02' $q$);
+
+CALL pg_temp.expect_ok('head nurse removes additional nurse NURSE-03 from Ward 101', $q$
+    CALL sp_RemoveAdditionalNurse(101, 'NURSE-03', 'NURSE-10', 'Rotation finished') $q$,
+    'medbase_head_nurse');
+
+-- Best-nurse algorithm & auto-assignment (for Ward 104, excluding current primary NURSE-04)
+CALL pg_temp.expect_true('best-nurse algorithm ranks Available nurse with lowest load #1 for Ward 104', $q$
+    SELECT (SELECT "NurseID" FROM fn_GetBestNurseForWard(104, 'NURSE-04') WHERE "Rank" = 1) = 'NURSE-03' $q$);
+
+CALL pg_temp.expect_ok('head nurse triggers auto-assignment for Ward 104', $q$
+    CALL sp_AutoAssignPrimaryNurse(104, 'NURSE-10', 'Emergency auto-cover', NULL) $q$,
+    'medbase_head_nurse');
+
+CALL pg_temp.expect_true('Ward 104 primary nurse is now NURSE-03 and audit log recorded all 4 actions', $q$
+    SELECT (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") = 'NURSE-03'
+       AND (SELECT array_agg("Action"::TEXT ORDER BY "LogID") FROM "NurseAssignmentLog")
+           = ARRAY['ASSIGN_ADDITIONAL', 'ASSIGN_PRIMARY', 'REMOVE_ADDITIONAL', 'AUTO_ASSIGN_PRIMARY'] $q$);
+
+-- Automatic handoff when primary nurse goes OffShift
+CALL pg_temp.expect_ok('primary nurse NURSE-03 of Ward 104 goes OffShift -> auto handoff', $q$
+    CALL sp_SetNurseStatus('NURSE-03', 'OffShift') $q$);
+
+CALL pg_temp.expect_true('Ward 104 automatically promoted an on-shift primary nurse after OffShift', $q$
+    SELECT (SELECT COUNT(*) FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") = 1
+       AND (SELECT "NurseID" FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary") <> 'NURSE-03' $q$);
+
+-- Security & append-only checks on T-51 objects
+CALL pg_temp.expect_error('ward nurse cannot assign ward nurses', $q$
+    CALL sp_AssignWardNurse(101, 'NURSE-01', TRUE, 'NURSE-01', 'Unauthorized') $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('ward nurse cannot read NurseAssignmentLog', $q$
+    SELECT * FROM "NurseAssignmentLog" $q$,
+    'permission denied%', 'medbase_nurse');
+
+CALL pg_temp.expect_error('NurseAssignmentLog is append-only (UPDATE blocked)', $q$
+    UPDATE "NurseAssignmentLog" SET "Reason" = 'Tampered' WHERE "LogID" = 1 $q$,
+    'NurseAssignmentLog is append-only: UPDATE%');
+
+CALL pg_temp.expect_error('NurseAssignmentLog is append-only (DELETE blocked)', $q$
+    DELETE FROM "NurseAssignmentLog" WHERE "LogID" = 1 $q$,
+    'NurseAssignmentLog is append-only: DELETE%');
+
 DO $$ BEGIN RAISE INFO 'ALL TESTS PASSED'; END $$;
 ROLLBACK;

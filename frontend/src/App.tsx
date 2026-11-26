@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from "react";
 
 import AdmissionsPage from "./AdmissionsPage";
+import AssignmentsPage from "./AssignmentsPage";
 import {
   getCurrentUser,
   getHealth,
@@ -13,6 +14,7 @@ import {
 } from "./api";
 import {
   AdmissionsIcon,
+  AssignmentsIcon,
   LogoMark,
   LogoutIcon,
   MoonIcon,
@@ -32,7 +34,7 @@ import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "post" | "report" | "wards" | "simulator" | "reviews";
+type Page = "admissions" | "post" | "report" | "assignments" | "wards" | "simulator" | "reviews";
 
 type PageInfo = {
   label: string;
@@ -59,6 +61,11 @@ const PAGE_INFO: Record<Page, PageInfo> = {
     icon: ReportIcon,
     description: () => "Время реакции, эскалации и история оповещений отделения",
   },
+  assignments: {
+    label: "Назначения",
+    icon: AssignmentsIcon,
+    description: () => "Кто работает в каких палатах: основная и дополнительные медсёстры",
+  },
   wards: {
     label: "Палаты",
     icon: WardsIcon,
@@ -81,7 +88,7 @@ const PAGES: Record<Role, Page[]> = {
   Admissions: ["admissions", "wards"],
   PublicStaff: ["wards"],
   Nurse: ["post", "wards", "simulator"],
-  HeadNurse: ["report", "post", "wards", "simulator"],
+  HeadNurse: ["report", "post", "assignments", "wards", "simulator"],
   Doctor: ["reviews"],
 };
 
@@ -194,6 +201,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         {page === "admissions" && <AdmissionsPage />}
         {page === "post" && <NursePost headNurse={user.role === "HeadNurse"} />}
         {page === "report" && <ReportPage />}
+        {page === "assignments" && <AssignmentsPage />}
         {page === "wards" && <WardBoard />}
         {page === "simulator" && <SimulatorPage />}
         {page === "reviews" && <StaffReviewPage />}

@@ -1550,3 +1550,34 @@ button.danger:where(:hover:not(:disabled)) {
     justify-content: space-between;
   }
 }
+
+/* Ward nurse assignments (head nurse): nurses x wards */
+.assign-reason {
+  display: grid;
+  gap: 6px;
+  max-width: 420px;
+  margin: 4px 0 14px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.assign-table td {
+  vertical-align: middle;
+}
+.assign-table td:first-child .badge {
+  margin-top: 4px;
+}
+.assign-cell .segment {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.segment-active.assign-additional,
+.segment-active.assign-additional:where(:hover:not(:disabled)) {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+}
+.assign-cell .segment:disabled:not(.segment-active) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

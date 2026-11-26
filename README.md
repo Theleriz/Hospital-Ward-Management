@@ -159,6 +159,7 @@ docker compose up -d --build --wait
 | API | http://localhost:8080/api/… (через nginx) или http://localhost:8000/api/… (напрямую) |
 | Документация API (Swagger) | http://localhost:8080/api/docs |
 | Проверка состояния | http://localhost:8080/api/health |
+| Табло в коридоре (без входа, только внутренняя сеть или известный экран) | http://localhost:8081 (порт меняет `MEDBASE_BOARD_PORT`; см. [decisions.md](docs/decisions.md), запись 15) |
 
 `--build` пересобирает backend и интерфейс после изменений в коде. Только база: `docker compose up -d --wait db`.
 
@@ -261,6 +262,10 @@ cd backend
   docker compose up -d --build --wait backend
   ```
 
+- для табло в коридоре на существующей базе — так же, миграцией
+  `/db/migrations/20261126_corridor_board.sql` (роль `medbase_board` и view `vw_CorridorAlerts`),
+  затем `docker compose up -d --build --wait backend frontend`.
+
 ## Доступ к БД из терминала
 
 Через psql внутри контейнера (ничего ставить не нужно):
@@ -321,6 +326,26 @@ docker exec -it medbase-postgres psql -U medbase -d hospital_ward -f /db/demo.sq
 
 Если запущен backend, его фоновая эскалация сама эскалирует просроченное ALT-1001 через пару секунд после перезаливки данных. Тогда в шаге 8 ручная эскалация ALT-1001 будет отклонена («was escalated … s ago»). Чтобы показать шаг 8 как задуман, на время SQL-демо остановите backend: `docker compose stop backend`.
 
+### Тесты интерфейса
+
+Экраны проверяются без сервера: Vitest и Testing Library в jsdom, API заменён поддельным `fetch`, время подделано (секунды проходят мгновенно).
+
+```bash
+cd frontend
+npm test
+```
+
+Сквозные тесты (Playwright) идут в настоящем браузере против запущенной системы: табло получает новое оповещение с симулятора не позже чем через 3 с, на нём нет данных пациента, после подтверждения на посту оповещение уходит с табло; табло показывает «Нет связи с сервером» и восстанавливается само; старшая медсестра назначает новую основную медсестру палаты, изменение попадает в журнал, а следующее оповещение палаты уходит новой медсестре и видно на её посту. Тесты меняют данные, поэтому их запускают на свежей базе.
+
+```bash
+docker compose up -d --build --wait
+cd frontend
+npx playwright install chromium   # один раз
+npm run e2e
+```
+
+Другие адреса: `MEDBASE_E2E_APP_URL` и `MEDBASE_E2E_BOARD_URL`; вместо скачанного Chromium можно взять установленный браузер: `MEDBASE_E2E_CHANNEL=msedge` или `chrome`.
+
 ## CI
 
 Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускается на каждый PR в `main`, на каждый push в `main` и вручную (Actions → CI → Run workflow). Четыре проверки идут параллельно, и все они должны быть зелёными:
@@ -329,8 +354,8 @@ Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускае
 |---|---|---|
 | `db-check` | `scripts/check-db.sh`: база с нуля, SQL-тесты, демо до конца, `05_queries.sql`, повторный `setup.sql` и тесты ещё раз; затем `scripts/check-backup.sh`: бэкап и восстановление на новом сервере | `bash scripts/check-db.sh`, затем `bash scripts/check-backup.sh` |
 | `backend-tests` | поднимает чистую базу (`docker compose up -d --wait db`) и запускает все тесты backend (pytest, 263 теста); отчёт JUnit сохраняется как артефакт запуска | `docker compose up -d --wait db`, затем в `backend`: `python -m pytest` |
-| `frontend-build` | `npm ci` и `npm run build`: проверка типов TypeScript и production-сборка | в `frontend`: `npm ci`, `npm run build` |
-| `system-start` | `docker compose up -d --build --wait` всей системы (NFR-05), затем через nginx на порту 8080: главная страница, `/api/health` с подключённой базой, вход тестовой старшей медсестрой и отчёт | `docker compose up -d --build --wait` |
+| `frontend-build` | `npm ci`, `npm run build` (проверка типов TypeScript и production-сборка) и `npm test` (тесты экранов, Vitest) | в `frontend`: `npm ci`, `npm run build`, `npm test` |
+| `system-start` | `docker compose up -d --build --wait` всей системы (NFR-05), затем через nginx на порту 8080: главная страница, `/api/health` с подключённой базой, вход тестовой старшей медсестрой и отчёт; табло на порту 8081 (страница и сводка), на нём нет остального API, а на 8080 нет сводки табло; в конце сквозные тесты в браузере (Playwright, `npm run e2e`), отчёт при ошибке сохраняется артефактом | `docker compose up -d --build --wait`, затем в `frontend`: `npm run e2e` |
 
 Что делает `db-check` по шагам:
 
@@ -405,6 +430,9 @@ bash scripts/check-backup.sh
 - **`sp_AcknowledgeAlert(alert, nurse)`** — подтверждение: назначенной медсестрой, медсестрой эскалации или медсестрой этой палаты. Назначенная медсестра при этом не затирается.
 - **`sp_SetNurseStatus(nurse, status)`** — смена статуса медсестры.
 - **Тестовые медсёстры и их PIN** перечислены в начале [db/04_seed.sql](db/04_seed.sql).
+- **`NurseAssignmentLog`** — неизменяемый журнал изменений состава медсестёр по палатам (кто, когда, кого и по какой причине назначил или снял).
+- **`fn_GetBestNurseForWard(ward, exclude_nurse)`** — алгоритм ранжирования медсестёр на смене по статусу (`Available` выше `Busy`), числу активных оповещений, числу палат и близости к палате/этажу.
+- **`sp_AssignWardNurse` / `sp_RemoveAdditionalNurse` / `sp_AutoAssignPrimaryNurse`** — управление назначениями (строго одна основная медсестра на палату, автопередача при уходе основной медсестры в `OffShift`, старые оповещения остаются у прежней медсестры).
 
 **Роли**
 
