@@ -1,26 +1,51 @@
+import { Button, Card, Chip } from "@heroui/react";
 import { useEffect, useState, type FormEvent } from "react";
-import News2Simulator from "./News2Simulator";
-import PewsSimulator from "./PewsSimulator";
-import MaternalMewsSimulator from "./MaternalMewsSimulator";
 
 import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
+import { ChoiceCards, ChoiceField, Field, FormCard, SideCard, SimLayout, Wide, type Choice } from "./fields";
+import MaternalMewsSimulator from "./MaternalMewsSimulator";
+import News2Simulator from "./News2Simulator";
+import PewsSimulator from "./PewsSimulator";
+import { Notice } from "./ui";
 
-type Notice = { kind: "ok" | "error"; text: string } | null;
+type NoticeState = { kind: "ok" | "error"; text: string } | null;
+type Mode = "MANUAL" | "NEWS2" | "PEWS" | "MATERNAL_MEWS";
 
-const SOURCES: { value: AlertSource; label: string; hint: string }[] = [
+const MODES: Choice<Mode>[] = [
+  { value: "MANUAL", label: "Ручной сценарий", hint: "существующий симулятор с выбранным приоритетом" },
+  { value: "NEWS2", label: "NEWS2 по показателям", hint: "сервер рассчитывает баллы и приоритет" },
+  { value: "PEWS", label: "Детский PEWS", hint: "учебная оценка для общих детских палат" },
+  { value: "MATERNAL_MEWS", label: "Акушерский MEWS", hint: "учебная оценка матери при беременности и после родов" },
+];
+
+const SOURCES: Choice<AlertSource>[] = [
   { value: "MONITOR", label: "Монитор пациента", hint: "показатели вышли за границы" },
   { value: "CALL_BUTTON", label: "Кнопка вызова", hint: "пациент зовёт медсестру" },
 ];
 
-const PRIORITIES: { value: Priority; hint: string }[] = [
+const PRIORITY_COLORS: Record<Priority, "danger" | "warning" | "default"> = {
+  CRITICAL: "danger",
+  HIGH: "warning",
+  LOW: "default",
+};
+
+const PRIORITIES: Choice<Priority>[] = [
   { value: "CRITICAL", hint: "угроза жизни" },
   { value: "HIGH", hint: "нужна помощь скоро" },
   { value: "LOW", hint: "без эскалации" },
-];
+].map((p) => ({
+  ...p,
+  value: p.value as Priority,
+  label: (
+    <Chip size="sm" variant="soft" color={PRIORITY_COLORS[p.value as Priority]} className="font-bold">
+      {p.value}
+    </Chip>
+  ),
+}));
 
 /** Demo stand-in for patient monitors and call buttons (T-26). */
 export default function SimulatorPage() {
-  const [mode, setMode] = useState<"MANUAL" | "NEWS2" | "PEWS" | "MATERNAL_MEWS">("MANUAL");
+  const [mode, setMode] = useState<Mode>("MANUAL");
   const [news2Busy, setNews2Busy] = useState(false);
   const [wards, setWards] = useState<SimulatorWard[]>([]);
   const [wardId, setWardId] = useState("");
@@ -28,7 +53,7 @@ export default function SimulatorPage() {
   const [source, setSource] = useState<AlertSource>("MONITOR");
   const [priority, setPriority] = useState<Priority>("CRITICAL");
   const [description, setDescription] = useState("");
-  const [notice, setNotice] = useState<Notice>(null);
+  const [notice, setNotice] = useState<NoticeState>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -75,169 +100,125 @@ export default function SimulatorPage() {
   }
 
   const modeControls = (
-    <fieldset className="card choice-field">
-      <legend>Режим симулятора</legend>
-      <div className="choice-group" role="radiogroup" aria-label="Режим симулятора">
-        <button type="button" role="radio" aria-checked={mode === "MANUAL"} disabled={busy || news2Busy}
-          className={mode === "MANUAL" ? "choice choice-active" : "choice"}
-          onClick={() => { setMode("MANUAL"); setNotice(null); }}>
-          Ручной сценарий<span>существующий симулятор с выбранным приоритетом</span>
-        </button>
-        <button type="button" role="radio" aria-checked={mode === "NEWS2"} disabled={busy || news2Busy}
-          className={mode === "NEWS2" ? "choice choice-active" : "choice"}
-          onClick={() => { setMode("NEWS2"); setNotice(null); }}>
-          NEWS2 по показателям<span>сервер рассчитывает баллы и приоритет</span>
-        </button>
-        <button type="button" role="radio" aria-checked={mode === "PEWS"} disabled={busy || news2Busy}
-          className={mode === "PEWS" ? "choice choice-active" : "choice"}
-          onClick={() => { setMode("PEWS"); setNotice(null); }}>
-          Детский PEWS<span>учебная оценка для общих детских палат</span>
-        </button>
-        <button type="button" role="radio" aria-checked={mode === "MATERNAL_MEWS"} disabled={busy || news2Busy}
-          className={mode === "MATERNAL_MEWS" ? "choice choice-active" : "choice"}
-          onClick={() => { setMode("MATERNAL_MEWS"); setNotice(null); }}>
-          Акушерский MEWS<span>учебная оценка матери при беременности и после родов</span>
-        </button>
-      </div>
-    </fieldset>
+    <Card>
+      <Card.Content>
+        <ChoiceCards
+          label="Режим симулятора"
+          value={mode}
+          onChange={(next) => {
+            setMode(next);
+            setNotice(null);
+          }}
+          choices={MODES}
+          isDisabled={busy || news2Busy}
+        />
+      </Card.Content>
+    </Card>
   );
 
+  const loadError = notice?.kind === "error" && <Notice kind="error">{notice.text}</Notice>;
+
   if (mode === "NEWS2") {
-    return <div className="stack">
-      {modeControls}
-      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
-      <News2Simulator wards={wards} onBusyChange={setNews2Busy} />
-    </div>;
+    return (
+      <div className="flex flex-col gap-5">
+        {modeControls}
+        {loadError}
+        <News2Simulator wards={wards} onBusyChange={setNews2Busy} />
+      </div>
+    );
   }
 
   if (mode === "PEWS") {
-    return <div className="stack">
-      {modeControls}
-      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
-      <PewsSimulator wards={wards} />
-    </div>;
+    return (
+      <div className="flex flex-col gap-5">
+        {modeControls}
+        {loadError}
+        <PewsSimulator wards={wards} />
+      </div>
+    );
   }
 
   if (mode === "MATERNAL_MEWS") {
-    return <div className="stack">
-      {modeControls}
-      {notice?.kind === "error" && <p className="notice notice-error" role="alert">{notice.text}</p>}
-      <MaternalMewsSimulator wards={wards} />
-    </div>;
+    return (
+      <div className="flex flex-col gap-5">
+        {modeControls}
+        {loadError}
+        <MaternalMewsSimulator wards={wards} />
+      </div>
+    );
   }
 
   return (
-    <div className="stack">
+    <div className="flex flex-col gap-5">
       {modeControls}
-      {notice && (
-        <p className={`notice notice-${notice.kind}`} role={notice.kind === "error" ? "alert" : "status"}>
-          {notice.text}
-        </p>
-      )}
-      <div className="sim-layout">
-        <form className="card form-grid" onSubmit={onSubmit}>
-          <h2 className="form-title">Новое оповещение</h2>
-          <label>
-            Палата
-            <select value={wardId} onChange={(e) => chooseWard(e.target.value)} required>
-              {wards.map((w) => (
-                <option key={w.ward_id} value={w.ward_id}>
-                  {w.ward_name}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              Получит: {ward ? (ward.nurse_on_duty ?? "никто — нет медсестры на смене") : "…"}
-            </span>
-          </label>
-          <label>
-            Пациент
-            <select value={patientId} onChange={(e) => setPatientId(e.target.value)}>
-              {ward?.patients.map((p) => (
-                <option key={p.patient_id} value={p.patient_id}>
-                  {p.full_name}
-                </option>
-              ))}
-              <option value="">без пациента (кнопка в коридоре)</option>
-            </select>
-          </label>
-
-          <fieldset className="form-wide choice-field">
-            <legend>Источник</legend>
-            <div className="choice-group choice-group-2" role="radiogroup" aria-label="Источник">
-              {SOURCES.map((s) => (
-                <button
-                  key={s.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={source === s.value}
-                  className={source === s.value ? "choice choice-active" : "choice"}
-                  onClick={() => setSource(s.value)}
-                >
-                  {s.label}
-                  <span>{s.hint}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="form-wide choice-field">
-            <legend>Приоритет</legend>
-            <div className="choice-group" role="radiogroup" aria-label="Приоритет">
-              {PRIORITIES.map((p) => (
-                <button
-                  key={p.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={priority === p.value}
-                  className={priority === p.value ? "choice choice-active" : "choice"}
-                  onClick={() => setPriority(p.value)}
-                >
-                  <b className={`priority priority-${p.value}`}>{p.value}</b>
-                  <span>{p.hint}</span>
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <label className="form-wide">
-            Описание (необязательно)
-            <input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={200}
-              placeholder="по умолчанию — типовое для источника и приоритета"
-            />
-          </label>
-          <div className="form-wide">
-            <button type="submit" disabled={busy || !wardId}>
+      {notice && <Notice kind={notice.kind}>{notice.text}</Notice>}
+      <SimLayout>
+        <FormCard title="Новое оповещение" onSubmit={onSubmit}>
+          <ChoiceField
+            label="Палата"
+            value={wardId}
+            onChange={chooseWard}
+            options={wards.map((w) => [String(w.ward_id), w.ward_name] as const)}
+            isRequired
+            hint={`Получит: ${ward ? (ward.nurse_on_duty ?? "никто — нет медсестры на смене") : "…"}`}
+          />
+          <ChoiceField
+            label="Пациент"
+            value={patientId}
+            onChange={setPatientId}
+            options={[
+              ...(ward?.patients.map((p) => [String(p.patient_id), p.full_name] as const) ?? []),
+              ["", "без пациента (кнопка в коридоре)"] as const,
+            ]}
+          />
+          <Wide>
+            <ChoiceCards label="Источник" value={source} onChange={setSource} choices={SOURCES} />
+          </Wide>
+          <Wide>
+            <ChoiceCards label="Приоритет" value={priority} onChange={setPriority} choices={PRIORITIES} />
+          </Wide>
+          <Field
+            className="md:col-span-2"
+            label="Описание (необязательно)"
+            value={description}
+            onChange={setDescription}
+            maxLength={200}
+            placeholder="по умолчанию — типовое для источника и приоритета"
+          />
+          <Wide>
+            <Button type="submit" isDisabled={busy || !wardId}>
               {busy ? "Отправка…" : "Создать оповещение"}
-            </button>
-          </div>
-        </form>
+            </Button>
+          </Wide>
+        </FormCard>
 
-        <aside className="card">
-          <h2>Как это работает</h2>
-          <p className="hint">
+        <SideCard title="Как это работает">
+          <p className="m-0">
             Только для демонстрации: экран заменяет монитор пациента и кнопку вызова. Оповещение появляется на посту
             медсестры палаты при обновлении списка.
           </p>
-          <ul className="legend">
-            <li>
-              <span className="priority priority-CRITICAL">Critical</span>
+          <ul className="m-0 flex list-none flex-col gap-3 p-0">
+            <li className="flex items-start gap-3">
+              <Chip size="sm" variant="soft" color="danger" className="shrink-0">
+                Critical
+              </Chip>
               <span>звук на посту; через 30 с без подтверждения — эскалация по правилам отделения</span>
             </li>
-            <li>
-              <span className="priority priority-HIGH">High</span>
+            <li className="flex items-start gap-3">
+              <Chip size="sm" variant="soft" color="warning" className="shrink-0">
+                High
+              </Chip>
               <span>звук на посту; эскалация через 30 с, как у критического</span>
             </li>
-            <li>
-              <span className="priority priority-LOW">Low</span>
+            <li className="flex items-start gap-3">
+              <Chip size="sm" variant="soft" className="shrink-0">
+                Low
+              </Chip>
               <span>без звука и без эскалации, ждёт медсестру палаты</span>
             </li>
           </ul>
-        </aside>
-      </div>
+        </SideCard>
+      </SimLayout>
     </div>
   );
 }

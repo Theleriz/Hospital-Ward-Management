@@ -1,3 +1,4 @@
+import { Button } from "@heroui/react";
 import { useState, type FormEvent } from "react";
 
 import {
@@ -8,6 +9,8 @@ import {
   type MaternalMewsInput,
   type SimulatorWard,
 } from "./api";
+import { CheckField, ChoiceField, Field, FormCard, Hint, ResultPanel, ScoreTable, SideCard, SimLayout, Wide } from "./fields";
+import { Notice } from "./ui";
 
 const ADDITIONAL_CONCERNS = [
   ["HEALTHCARE_PROFESSIONAL", "Обеспокоенность медицинского работника"],
@@ -144,128 +147,96 @@ export default function MaternalMewsSimulator({ wards }: { wards: SimulatorWard[
     }
   }
 
-  return <div className="sim-layout">
-    <form className="card form-grid" onSubmit={assess}>
-      <h2 className="form-title">Акушерский MEWS NHS England — учебная оценка матери</h2>
-      {error && <p className="notice notice-error form-wide" role="alert">{error}</p>}
-      {notice && <p className="notice notice-ok form-wide" role="status">{notice}</p>}
+  return <SimLayout>
+    <FormCard title="Акушерский MEWS NHS England — учебная оценка матери" onSubmit={assess}>
+      {error && <Wide><Notice kind="error">{error}</Notice></Wide>}
+      {notice && <Wide><Notice kind="ok">{notice}</Notice></Wide>}
 
-      <label>Палата
-        <select value={wardId} onChange={(event) => selectWard(event.target.value)} required>
-          <option value="">Выберите палату</option>
-          {wards.map((item) => <option key={item.ward_id} value={item.ward_id}>{item.ward_name}</option>)}
-        </select>
-      </label>
-      <label>Пациент
-        <select value={patientId} onChange={(event) => { setPatientId(event.target.value); clearResult(); }} required>
-          <option value="">Выберите госпитализированного пациента</option>
-          {ward?.patients.map((item) => <option key={item.patient_id} value={item.patient_id}>{item.full_name}</option>)}
-        </select>
-      </label>
+      <ChoiceField label="Палата" value={wardId} onChange={selectWard} isRequired placeholder="Выберите палату"
+        options={wards.map((item) => [String(item.ward_id), item.ward_name] as const)} />
+      <ChoiceField label="Пациент" value={patientId} isRequired placeholder="Выберите госпитализированного пациента"
+        onChange={(value) => { setPatientId(value); clearResult(); }}
+        options={ward?.patients.map((item) => [String(item.patient_id), item.full_name] as const) ?? []} />
 
-      <label>Статус матери — подтвердите беременность или укажите, что роды уже произошли
-        <select value={values.maternal_status ?? ""}
-          onChange={(event) => updateMaternalStatus((event.target.value || null) as MaternalMewsInput["maternal_status"])}>
-          <option value="">не подтверждён</option>
-          <option value="PREGNANT">Беременность подтверждена</option>
-          <option value="POSTPARTUM">После родов</option>
-        </select>
-      </label>
-      {values.maternal_status === "POSTPARTUM" && <label>
-        Дата и время родов
-        <input type="datetime-local" value={values.delivery_at ?? ""} required
-          onChange={(event) => {
-            setValues((current) => ({ ...current, delivery_at: event.target.value || null }));
-            clearResult();
-          }} />
-      </label>}
+      <ChoiceField className="md:col-span-2"
+        label="Статус матери — подтвердите беременность или укажите, что роды уже произошли"
+        value={values.maternal_status ?? ""}
+        onChange={(value) => updateMaternalStatus((value || null) as MaternalMewsInput["maternal_status"])}
+        options={[["", "не подтверждён"], ["PREGNANT", "Беременность подтверждена"], ["POSTPARTUM", "После родов"]]} />
+      {values.maternal_status === "POSTPARTUM" && <Field label="Дата и время родов" type="datetime-local" isRequired
+        value={values.delivery_at ?? ""}
+        onChange={(text) => { setValues((current) => ({ ...current, delivery_at: text || null })); clearResult(); }} />}
 
-      <label>Частота дыхания (в минуту)
-        <input type="number" min="0" step="1" value={values.respiratory_rate ?? ""}
-          onChange={(event) => setNumber("respiratory_rate", event.target.value)} />
-      </label>
-      <label>SpO₂ (%)
-        <input type="number" min="0" max="100" step="1" value={values.spo2 ?? ""}
-          onChange={(event) => setNumber("spo2", event.target.value)} />
-      </label>
-      <label>Температура (°C)
-        <input type="number" min="25" max="45" step="0.1" value={values.temperature ?? ""}
-          onChange={(event) => setNumber("temperature", event.target.value)} />
-      </label>
-      <label>Пульс (уд/мин)
-        <input type="number" min="0" step="1" value={values.heart_rate ?? ""}
-          onChange={(event) => setNumber("heart_rate", event.target.value)} />
-      </label>
-      <label>Систолическое давление (мм рт. ст.)
-        <input type="number" min="0" step="1" value={values.systolic ?? ""}
-          onChange={(event) => setNumber("systolic", event.target.value)} />
-      </label>
-      <label>Диастолическое давление (мм рт. ст.)
-        <input type="number" min="0" step="1" value={values.diastolic ?? ""}
-          onChange={(event) => setNumber("diastolic", event.target.value)} />
-      </label>
+      <Field label="Частота дыхания (в минуту)" type="number" min="0" step="1" value={values.respiratory_rate}
+        onChange={(text) => setNumber("respiratory_rate", text)} />
+      <Field label="SpO₂ (%)" type="number" min="0" max="100" step="1" value={values.spo2}
+        onChange={(text) => setNumber("spo2", text)} />
+      <Field label="Температура (°C)" type="number" min="25" max="45" step="0.1" value={values.temperature}
+        onChange={(text) => setNumber("temperature", text)} />
+      <Field label="Пульс (уд/мин)" type="number" min="0" step="1" value={values.heart_rate}
+        onChange={(text) => setNumber("heart_rate", text)} />
+      <Field label="Систолическое давление (мм рт. ст.)" type="number" min="0" step="1" value={values.systolic}
+        onChange={(text) => setNumber("systolic", text)} />
+      <Field label="Диастолическое давление (мм рт. ст.)" type="number" min="0" step="1" value={values.diastolic}
+        onChange={(text) => setNumber("diastolic", text)} />
 
-      <fieldset className="form-wide choice-field">
-        <legend>Дополнительные признаки из таблицы</legend>
-        {ADDITIONAL_CONCERNS.map(([code, label]) => <label key={code} style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox"
-            checked={(values.additional_concerns ?? []).includes(code)}
-            onChange={(event) => updateConcern(code, event.target.checked)} />
-          {label}
-        </label>)}
-        <label style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox"
-            checked={values.additional_concerns_confirmed}
-            onChange={(event) => { setValues((current) => ({ ...current, additional_concerns_confirmed: event.target.checked })); clearResult(); }} />
-          Проверка дополнительных признаков завершена
-        </label>
-      </fieldset>
-      <label className="form-wide" style={{ flexDirection: "row", alignItems: "flex-start" }}>
-        <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox"
-          checked={values.measurements_confirmed}
-          onChange={(event) => { setValues((current) => ({ ...current, measurements_confirmed: event.target.checked })); clearResult(); }} />
-        Достоверность измерений подтверждена
-      </label>
-      <div className="form-wide">
-        <button type="submit" disabled={busy || !patientId}>{busy ? "Проверка…" : "Рассчитать MEWS"}</button>
-      </div>
+      <Wide>
+        <fieldset className="m-0 flex flex-col gap-2.5 rounded-xl border border-[var(--border)] p-4">
+          <legend className="px-1 text-sm font-medium text-[var(--text)]">Дополнительные признаки из таблицы</legend>
+          {ADDITIONAL_CONCERNS.map(([code, label]) => (
+            <CheckField key={code} checked={(values.additional_concerns ?? []).includes(code)}
+              onChange={(checked) => updateConcern(code, checked)}>
+              {label}
+            </CheckField>
+          ))}
+          <CheckField checked={values.additional_concerns_confirmed} className="mt-1 font-medium"
+            onChange={(checked) => { setValues((current) => ({ ...current, additional_concerns_confirmed: checked })); clearResult(); }}>
+            Проверка дополнительных признаков завершена
+          </CheckField>
+        </fieldset>
+      </Wide>
+      <Wide>
+        <CheckField checked={values.measurements_confirmed}
+          onChange={(checked) => { setValues((current) => ({ ...current, measurements_confirmed: checked })); clearResult(); }}>
+          Достоверность измерений подтверждена
+        </CheckField>
+      </Wide>
+      <Wide>
+        <Button type="submit" isDisabled={busy || !patientId}>{busy ? "Проверка…" : "Рассчитать MEWS"}</Button>
+      </Wide>
 
-      {assessment && <section className="form-wide" aria-live="polite">
-        <h3>{assessment.status === "REVIEW_REQUIRED" ? "Нужна проверка персоналом" : "Результат акушерского MEWS"}</h3>
+      {assessment && <ResultPanel title={assessment.status === "REVIEW_REQUIRED" ? "Нужна проверка персоналом" : "Результат акушерского MEWS"}>
         {assessment.status === "CLASSIFIED" && <>
-          <p>Сумма MEWS: <strong>{assessment.score}</strong> · уровень: <strong>{assessment.risk_level ? LEVEL_NAMES[assessment.risk_level] : "—"}</strong></p>
-          <p>{assessment.pulse_rule === "ANTENATAL"
+          <p className="m-0">Сумма MEWS: <strong className="text-lg">{assessment.score}</strong> · уровень:{" "}
+            <strong>{assessment.risk_level ? LEVEL_NAMES[assessment.risk_level] : "—"}</strong></p>
+          <p className="m-0">{assessment.pulse_rule === "ANTENATAL"
             ? "Для пульса использована строка для беременности."
             : assessment.pulse_rule === "POSTPARTUM_UNDER_48H"
               ? "Для пульса использована строка до 48 часов после родов."
               : "Для пульса использована строка от 48 часов после родов."}</p>
-          <div className="table-wrap"><table className="table">
-            <thead><tr><th>Показатель</th><th>Баллы</th></tr></thead>
-            <tbody>{Object.entries(assessment.component_scores).map(([key, score]) => <tr key={key}>
-              <td>{COMPONENT_NAMES[key] ?? key}</td><td>{score}</td>
-            </tr>)}</tbody>
-          </table></div>
+          <ScoreTable rows={Object.entries(assessment.component_scores).map(([key, score]) =>
+            [COMPONENT_NAMES[key] ?? key, score] as [string, number])} />
         </>}
-        {assessment.reason && <p>{assessment.reason}</p>}
-        {assessment.additional_concerns.length > 0 && <div className="notice notice-error">
+        {assessment.reason && <p className="m-0">{assessment.reason}</p>}
+        {assessment.additional_concerns.length > 0 && <Notice kind="error">
           <strong>Дополнительные признаки (отдельно от суммы):</strong>
-          <ul>{assessment.additional_concerns.map((item) => <li key={item}>{item}</li>)}</ul>
-          <p>По таблице при наличии признака ориентируются как минимум на низко-средний уровень; при сумме выше 2 уровень повышается на одну категорию.</p>
+          <ul className="my-1 pl-5">{assessment.additional_concerns.map((item) => <li key={item}>{item}</li>)}</ul>
+          По таблице при наличии признака ориентируются как минимум на низко-средний уровень; при сумме выше 2 уровень повышается на одну категорию.
+        </Notice>}
+        {assessment.status === "REVIEW_REQUIRED" && <p className="m-0">Баллы не рассчитываются. Заявка сохраняется только по нажатию кнопки ниже и не создаёт экстренное оповещение.</p>}
+        {(assessment.status === "REVIEW_REQUIRED" || assessment.additional_concerns.length > 0) && <div>
+          <Button variant="secondary" isDisabled={busy || reviewSent || !patientId} onPress={() => void requestReview()}>
+            {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
+          </Button>
         </div>}
-        {assessment.status === "REVIEW_REQUIRED" && <p>Баллы не рассчитываются. Заявка сохраняется только по нажатию кнопки ниже и не создаёт экстренное оповещение.</p>}
-        {(assessment.status === "REVIEW_REQUIRED" || assessment.additional_concerns.length > 0) && <button type="button"
-          disabled={busy || reviewSent || !patientId} onClick={() => void requestReview()}>
-          {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
-        </button>}
-        <p className="hint"><a href={assessment.source_url} target="_blank" rel="noreferrer">Финальная таблица MEWS, рисунки 3–4 (BMJ Medicine)</a></p>
-      </section>}
-    </form>
-    <aside className="card">
-      <h2>Учебная оценка матери</h2>
-      <p className="hint">Применяется при явно подтверждённой беременности или в первые 4 недели после родов. Пол и палата не определяют применимость.</p>
-      <p className="hint">Оценка не является диагнозом. Она не создаёт и не запускает экстренное оповещение.</p>
-      <p className="hint"><a href={assessment?.scope_source_url ?? "https://www.england.nhs.uk/long-read/the-maternal-care-bundle/"}
+        <Hint><a className="text-[var(--accent)] underline" href={assessment.source_url} target="_blank" rel="noreferrer">Финальная таблица MEWS, рисунки 3–4 (BMJ Medicine)</a></Hint>
+      </ResultPanel>}
+    </FormCard>
+    <SideCard title="Учебная оценка матери">
+      <p className="m-0">Применяется при явно подтверждённой беременности или в первые 4 недели после родов. Пол и палата не определяют применимость.</p>
+      <p className="m-0">Оценка не является диагнозом. Она не создаёт и не запускает экстренное оповещение.</p>
+      <p className="m-0"><a className="text-[var(--accent)] underline" href={assessment?.scope_source_url ?? "https://www.england.nhs.uk/long-read/the-maternal-care-bundle/"}
         target="_blank" rel="noreferrer">Область применения: NHS England, раздел 2.1</a></p>
-    </aside>
-  </div>;
+    </SideCard>
+  </SimLayout>;
 }

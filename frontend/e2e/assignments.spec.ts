@@ -4,7 +4,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { HEAD_NURSE, NURSE_3, NURSE_4, openSection, signIn } from "./helpers";
+import { chooseOption, HEAD_NURSE, NURSE_3, NURSE_4, openSection, signIn } from "./helpers";
 
 const WARD = "Emergency Overflow Ward"; // ward 104: NURSE-04 is primary in the seed data
 const WARD_ID = 104;
@@ -74,7 +74,7 @@ test("a new primary nurse gets the ward's next alert, and the change is in the j
   await page.getByRole("button", { name: "Выйти" }).click();
   await signIn(page, NURSE_4);
   await openSection(page, "Симулятор устройств");
-  await page.getByLabel("Палата").selectOption({ label: WARD });
+  await chooseOption(page, "Палата", WARD);
   await page.getByRole("radio", { name: /Кнопка вызова/ }).click();
   await page.getByRole("radio", { name: /HIGH/ }).click();
   await page.getByLabel("Описание (необязательно)").fill(description);

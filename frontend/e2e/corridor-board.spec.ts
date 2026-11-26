@@ -4,7 +4,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { BOARD_URL, NURSE_4, openSection, signIn, wardTile } from "./helpers";
+import { chooseOption, BOARD_URL, NURSE_4, openSection, signIn, wardTile } from "./helpers";
 
 const WARD = "Emergency Overflow Ward"; // ward 104, no alerts in the seed data
 // The board asks every 1.5 s; allow one missed answer on a slow CI machine
@@ -39,7 +39,7 @@ test("a new alert reaches the board, without patient data, and leaves it when ac
   const description = `E2E ${Date.now()}: пациентка Тестова просит помощи`;
   await signIn(page, NURSE_4);
   await openSection(page, "Симулятор устройств");
-  await page.getByLabel("Палата").selectOption({ label: WARD });
+  await chooseOption(page, "Палата", WARD);
   await page.getByRole("radio", { name: /Кнопка вызова/ }).click();
   await page.getByRole("radio", { name: /CRITICAL/ }).click();
   await page.getByLabel("Описание (необязательно)").fill(description);

@@ -1,9 +1,11 @@
+import { Button, Card, Chip, Input, Label, TextField } from "@heroui/react";
 import JsBarcode from "jsbarcode";
 import { flushSync } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError, getBadges, reissueBadge, ROLE_LABELS, type Badge, type Role } from "./api";
 import { LogoMark } from "./icons";
+import { Notice as NoticeAlert } from "./ui";
 
 type Notice = { kind: "ok" | "error"; text: string };
 
@@ -60,7 +62,13 @@ export default function BadgesPage() {
   }
 
   if (!badges) {
-    return notice ? <p className="notice notice-error" role="alert">{notice.text}</p> : <div className="card" aria-busy="true" />;
+    return notice ? (
+      <NoticeAlert kind="error">{notice.text}</NoticeAlert>
+    ) : (
+      <Card aria-busy="true" className="h-40 animate-pulse">
+        <span className="sr-only">Загрузка…</span>
+      </Card>
+    );
   }
 
   const needle = query.trim().toLowerCase();
@@ -69,40 +77,37 @@ export default function BadgesPage() {
   );
 
   return (
-    <div className="stack">
+    <div className="flex flex-col gap-5">
       {notice && (
-        <p className={`notice notice-${notice.kind} no-print`} role={notice.kind === "error" ? "alert" : "status"}>
-          {notice.text}
-        </p>
+        <div className="no-print">
+          <NoticeAlert kind={notice.kind}>{notice.text}</NoticeAlert>
+        </div>
       )}
 
-      <section className="card no-print">
-        <div className="section-head">
-          <h2>Бейджи сотрудников</h2>
-          <span className="badge badge-muted">{badges.length}</span>
-        </div>
-        <p className="hint">
-          В штрих-код зашит только номер бейджа, PIN не печатается. Вход: сканировать бейдж, затем ввести PIN.
-          Перевыпуск выдаёт новый номер, старый бейдж сразу перестаёт работать.
-        </p>
-        <div className="badges-toolbar">
-          <label>
-            Поиск
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Имя, роль или номер"
-            />
-          </label>
-          <button type="button" onClick={() => print(null)} disabled={shown.length === 0}>
+      <Card className="no-print">
+        <Card.Header className="flex flex-row flex-wrap items-start justify-between gap-3">
+          <div>
+            <Card.Title render={(props) => <h2 {...props} />}>Бейджи сотрудников</Card.Title>
+            <Card.Description>
+              В штрих-код зашит только номер бейджа, PIN не печатается. Вход: сканировать бейдж, затем ввести PIN.
+              Перевыпуск выдаёт новый номер, старый бейдж сразу перестаёт работать.
+            </Card.Description>
+          </div>
+          <Chip variant="soft">{badges.length}</Chip>
+        </Card.Header>
+        <Card.Content className="flex flex-row flex-wrap items-end gap-3">
+          <TextField type="search" value={query} onChange={setQuery} className="w-full max-w-sm">
+            <Label>Поиск</Label>
+            <Input placeholder="Имя, роль или номер" />
+          </TextField>
+          <Button onPress={() => print(null)} isDisabled={shown.length === 0}>
             Печать всех ({shown.length})
-          </button>
-        </div>
-      </section>
+          </Button>
+        </Card.Content>
+      </Card>
 
       {shown.length === 0 ? (
-        <p className="empty no-print">Никого не найдено</p>
+        <p className="no-print m-0 py-6 text-center text-[var(--muted)]">Никого не найдено</p>
       ) : (
         <div className="badges-grid">
           {shown.map((b) => (
@@ -120,13 +125,13 @@ export default function BadgesPage() {
                 <span className="badge-card-role">{roleLabel(b.role)}</span>
                 <Barcode value={b.badge_id} />
               </div>
-              <div className="badge-actions no-print">
-                <button type="button" className="secondary" onClick={() => print(b.person_id)}>
+              <div className="no-print mt-2 flex gap-2">
+                <Button size="sm" variant="secondary" className="flex-1" onPress={() => print(b.person_id)}>
                   Печать
-                </button>
-                <button type="button" className="secondary" onClick={() => setConfirming(b)}>
+                </Button>
+                <Button size="sm" variant="ghost" className="flex-1 text-[var(--down)]" onPress={() => setConfirming(b)}>
                   Перевыпустить
-                </button>
+                </Button>
               </div>
             </article>
           ))}
@@ -185,21 +190,31 @@ function ReissueDialog({
   }, []);
 
   return (
-    <dialog ref={ref} className="confirm-dialog" aria-labelledby="reissue-title" onClose={onClose}>
-      <h1 id="reissue-title">Перевыпустить бейдж?</h1>
-      <p>
-        {badge.full_name} получит новый номер. Бейдж <strong>{badge.badge_id}</strong> сразу перестанет открывать
-        вход. PIN не меняется.
-      </p>
-      <div className="dialog-actions">
-        <form method="dialog">
-          <button type="submit" className="secondary" autoFocus disabled={saving}>
+    <dialog
+      ref={ref}
+      className="confirm-dialog max-w-md rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text)] shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm"
+      aria-labelledby="reissue-title"
+      onClose={onClose}
+    >
+      <div className="flex flex-col gap-4">
+        <span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--down-bg)] text-xl font-bold text-[var(--down)]">
+          !
+        </span>
+        <h1 id="reissue-title" className="m-0 text-xl font-bold">
+          Перевыпустить бейдж?
+        </h1>
+        <p className="m-0 text-sm text-[var(--muted)]">
+          {badge.full_name} получит новый номер. Бейдж <strong className="text-[var(--text)]">{badge.badge_id}</strong>{" "}
+          сразу перестанет открывать вход. PIN не меняется.
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" autoFocus isDisabled={saving} onPress={() => ref.current?.close()}>
             Отмена
-          </button>
-        </form>
-        <button type="button" className="danger" onClick={onConfirm} disabled={saving}>
-          {saving ? "Перевыпуск…" : "Перевыпустить"}
-        </button>
+          </Button>
+          <Button variant="danger" onPress={onConfirm} isDisabled={saving}>
+            {saving ? "Перевыпуск…" : "Перевыпустить"}
+          </Button>
+        </div>
       </div>
     </dialog>
   );

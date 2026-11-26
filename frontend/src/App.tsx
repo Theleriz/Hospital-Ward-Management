@@ -144,7 +144,8 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--bg)] lg:flex-row">
-      <aside className="flex shrink-0 flex-col gap-6 border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] px-4 py-5 text-[var(--sidebar-text)] lg:sticky lg:top-0 lg:h-screen lg:w-72">
+      {/* no-print: the badge print page shows only the badges (index.css, @media print) */}
+      <aside className="no-print flex shrink-0 flex-col gap-6 border-r border-[var(--sidebar-border)] bg-[var(--sidebar)] px-4 py-5 text-[var(--sidebar-text)] lg:sticky lg:top-0 lg:h-screen lg:w-72">
         <div className="flex items-center gap-3 px-2">
           <LogoMark size={38} />
           <div className="flex flex-col leading-tight">
@@ -222,8 +223,8 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 px-5 py-6 lg:px-10 lg:py-8">
-        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <main className="min-w-0 flex-1 px-5 py-6 print:bg-white print:p-0 lg:px-10 lg:py-8">
+        <header className="no-print mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h1 className="m-0 text-3xl font-bold tracking-tight text-[var(--text)]">{info.label}</h1>
             <p className="m-0 text-sm text-[var(--muted)]">{info.description(user.role)}</p>

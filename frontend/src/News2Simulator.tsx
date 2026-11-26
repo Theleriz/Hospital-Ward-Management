@@ -1,9 +1,12 @@
+import { Button, Chip } from "@heroui/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
   ApiError, assessNews2Vitals, raiseNews2Alert, submitStaffReview,
   type News2Assessment, type News2Consciousness, type News2VitalSigns, type SimulatorWard,
 } from "./api";
+import { CheckField, ChoiceField, Field, FormCard, Hint, ResultPanel, ScoreTable, SideCard, SimLayout, Wide } from "./fields";
+import { Notice } from "./ui";
 
 type NumericField = "spo2" | "heart_rate" | "systolic" | "diastolic" | "respiratory_rate" | "temperature";
 type Readings = Record<NumericField, string>;
@@ -24,6 +27,7 @@ const COMPONENT_LABELS: Record<string, string> = {
   respiratory_rate: "Дыхание", temperature: "Температура", consciousness: "Сознание",
   supplemental_oxygen: "Дополнительный кислород",
 };
+const PRIORITY_COLORS = { CRITICAL: "danger", HIGH: "warning", LOW: "default" } as const;
 const RISK_LABELS = { LOW: "низкий", LOW_MEDIUM: "низкий–средний: отдельный показатель 3",
   MEDIUM: "средний", HIGH: "высокий" };
 
@@ -171,131 +175,138 @@ export default function News2Simulator({ wards, onBusyChange }: {
     && assessedRevision.current === revision.current && busy === null;
 
   return (
-    <div className="sim-layout">
-      <form className="card form-grid" onSubmit={assess}>
-        <h2 className="form-title">NEWS2 — учебная оценка показателей</h2>
-        {error && <p className="notice notice-error form-wide" role="alert">{error}</p>}
-        {notice && <p className="notice notice-ok form-wide" role="status">{notice}</p>}
-        {!wards.length && <p className="notice form-wide">Список палат не загружен. Проверьте соединение с сервером.</p>}
-        <label>Палата
-          <select value={wardId} disabled={locked} onChange={(e) => chooseWard(e.target.value)} required>
-            {wards.map((w) => <option key={w.ward_id} value={w.ward_id}>{w.ward_name}</option>)}
-          </select>
-          <span className="hint">Получит: {ward?.nurse_on_duty ?? "нет медсестры палаты на смене"}</span>
-        </label>
-        <label>Пациент
-          <select value={patientId} required disabled={locked} onChange={(e) => { resetEpisode(); setPatientId(e.target.value); }}>
-            <option value="">Выберите госпитализированного пациента</option>
-            {ward?.patients.map((p) => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
-          </select>
-        </label>
-        <div className="form-wide">
-          <button type="button" className="secondary" disabled={locked} onClick={fillExample}>Заполнить учебный пример</button>
-        </div>
+    <SimLayout>
+      <FormCard title="NEWS2 — учебная оценка показателей" onSubmit={assess}>
+        {error && <Wide><Notice kind="error">{error}</Notice></Wide>}
+        {notice && <Wide><Notice kind="ok">{notice}</Notice></Wide>}
+        {!wards.length && <Wide><Hint>Список палат не загружен. Проверьте соединение с сервером.</Hint></Wide>}
+        <ChoiceField
+          label="Палата"
+          value={wardId}
+          onChange={chooseWard}
+          options={wards.map((w) => [String(w.ward_id), w.ward_name] as const)}
+          isRequired
+          isDisabled={locked}
+          hint={`Получит: ${ward?.nurse_on_duty ?? "нет медсестры палаты на смене"}`}
+        />
+        <ChoiceField
+          label="Пациент"
+          value={patientId}
+          onChange={(value) => { resetEpisode(); setPatientId(value); }}
+          options={ward?.patients.map((p) => [String(p.patient_id), p.full_name] as const) ?? []}
+          placeholder="Выберите госпитализированного пациента"
+          isRequired
+          isDisabled={locked}
+        />
+        <Wide>
+          <Button variant="secondary" isDisabled={locked} onPress={fillExample}>Заполнить учебный пример</Button>
+        </Wide>
         {FIELDS.map((field) => (
-          <label key={field.key}>{field.label}
-            <input type="number" value={readings[field.key]} min={field.min} max={field.max} step={field.step}
-              required disabled={locked} onChange={(e) => {
-                invalidate(); setConfirmed(false);
-                setReadings((old) => ({ ...old, [field.key]: e.target.value }));
-              }} />
-          </label>
+          <Field key={field.key} label={field.label} type="number" value={readings[field.key]}
+            min={field.min} max={field.max} step={field.step} isRequired isDisabled={locked}
+            onChange={(text) => {
+              invalidate(); setConfirmed(false);
+              setReadings((old) => ({ ...old, [field.key]: text }));
+            }} />
         ))}
-        <label>Возраст (лет)
-          <input type="number" value={age} min={0} max={130} step={1} disabled={locked}
-            onChange={(e) => { invalidate(); setAge(e.target.value); }} />
-        </label>
-        <label>Беременность
-          <select value={pregnancy} disabled={locked} onChange={(e) => { invalidate(); setPregnancy(e.target.value); }}>
-            <option value="">не указано</option><option value="no">нет / неприменимо</option><option value="yes">да</option>
-          </select>
-        </label>
-        <label>Сознание / новая спутанность
-          <select value={consciousness} disabled={locked} onChange={(e) => {
-            invalidate(); setConfirmed(false); setConsciousness(e.target.value as News2Consciousness | "");
-          }}>
-            <option value="">не указано</option><option value="ALERT">в ясном сознании</option>
-            <option value="NEW_CONFUSION">новая или усилившаяся спутанность</option>
-            <option value="VOICE">реагирует на голос</option><option value="PAIN">реагирует на боль</option>
-            <option value="UNRESPONSIVE">нет реакции</option>
-          </select>
-        </label>
-        <label>Дополнительный кислород
-          <select value={oxygen} disabled={locked} onChange={(e) => {
-            invalidate(); setConfirmed(false); setOxygen(e.target.value);
-          }}><option value="">не указано</option><option value="no">нет — воздух</option><option value="yes">да</option></select>
-        </label>
-        <label>Шкала SpO₂
-          <select value={scale} disabled={locked} onChange={(e) => {
-            invalidate(); setConfirmed(false); setScaleConfirmed(false); setScale(Number(e.target.value) as 1 | 2);
-          }}><option value={1}>Scale 1 — стандартная</option><option value={2}>Scale 2 — по документированному решению</option></select>
-        </label>
-        {scale === 2 && <label className="form-wide" style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox" checked={scaleConfirmed} disabled={locked}
-            onChange={(e) => { invalidate(); setScaleConfirmed(e.target.checked); }} />
-          Для учебного пациента подтверждено документированное клиническое решение о Scale 2
-        </label>}
-        <label className="form-wide" style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox" checked={confirmed} disabled={locked}
-            onChange={(e) => { invalidate(); setConfirmed(e.target.checked); }} />
-          Достоверность учебных измерений подтверждена
-        </label>
-        <label className="form-wide" style={{ flexDirection: "row", alignItems: "flex-start" }}>
-          <input style={{ height: 18, width: 18, flexShrink: 0 }} type="checkbox" checked={acute} disabled={locked}
-            onChange={(e) => { invalidate(); setAcute(e.target.checked); }} />
-          Сообщены острые симптомы — требуется срочная оценка персоналом
-        </label>
-        <div className="form-wide">
-          <button type="submit" disabled={busy !== null || !wardId || !patientId}>
+        <Field label="Возраст (лет)" type="number" value={age} min={0} max={130} step={1} isDisabled={locked}
+          onChange={(text) => { invalidate(); setAge(text); }} />
+        <ChoiceField label="Беременность" value={pregnancy} isDisabled={locked}
+          onChange={(value) => { invalidate(); setPregnancy(value); }}
+          options={[["", "не указано"], ["no", "нет / неприменимо"], ["yes", "да"]]} />
+        <ChoiceField label="Сознание / новая спутанность" value={consciousness} isDisabled={locked}
+          onChange={(value) => { invalidate(); setConfirmed(false); setConsciousness(value as News2Consciousness | ""); }}
+          options={[["", "не указано"], ["ALERT", "в ясном сознании"], ["NEW_CONFUSION", "новая или усилившаяся спутанность"],
+            ["VOICE", "реагирует на голос"], ["PAIN", "реагирует на боль"], ["UNRESPONSIVE", "нет реакции"]]} />
+        <ChoiceField label="Дополнительный кислород" value={oxygen} isDisabled={locked}
+          onChange={(value) => { invalidate(); setConfirmed(false); setOxygen(value); }}
+          options={[["", "не указано"], ["no", "нет — воздух"], ["yes", "да"]]} />
+        <ChoiceField label="Шкала SpO₂" value={String(scale)} isDisabled={locked}
+          onChange={(value) => { invalidate(); setConfirmed(false); setScaleConfirmed(false); setScale(Number(value) as 1 | 2); }}
+          options={[["1", "Scale 1 — стандартная"], ["2", "Scale 2 — по документированному решению"]]} />
+        {scale === 2 && (
+          <Wide>
+            <CheckField checked={scaleConfirmed} isDisabled={locked}
+              onChange={(checked) => { invalidate(); setScaleConfirmed(checked); }}>
+              Для учебного пациента подтверждено документированное клиническое решение о Scale 2
+            </CheckField>
+          </Wide>
+        )}
+        <Wide className="flex flex-col gap-3">
+          <CheckField checked={confirmed} isDisabled={locked}
+            onChange={(checked) => { invalidate(); setConfirmed(checked); }}>
+            Достоверность учебных измерений подтверждена
+          </CheckField>
+          <CheckField checked={acute} isDisabled={locked}
+            onChange={(checked) => { invalidate(); setAcute(checked); }}>
+            Сообщены острые симптомы — требуется срочная оценка персоналом
+          </CheckField>
+        </Wide>
+        <Wide>
+          <Button type="submit" isDisabled={busy !== null || !wardId || !patientId}>
             {busy === "assess" ? "Расчёт…" : "Рассчитать приоритет"}
-          </button>
-        </div>
-        {assessment && <section className="form-wide" aria-live="polite">
-          <h3>{assessment.status === "REVIEW_REQUIRED" ? "Нужна проверка персоналом" : "Результат оценки"}</h3>
-          {assessment.priority && <p>Приоритет MedBase: <b className={`priority priority-${assessment.priority}`}>{assessment.priority}</b></p>}
-          {assessment.news2_score !== null && <p>NEWS2: <strong>{assessment.news2_score}</strong>
-            {assessment.news2_risk && ` · риск NEWS2: ${RISK_LABELS[assessment.news2_risk]}`}</p>}
-          {assessment.classification_basis === "ACUTE_SYMPTOMS_OVERRIDE" && <p>NEWS2 не вычислен: действует отдельное правило острых симптомов.</p>}
-          <p>{assessment.reason}</p>
-          {assessment.status === "REVIEW_REQUIRED" && <div>
-            <p>Это учебная оценка, не диагноз. Заявка не вызывает экстренное оповещение.</p>
-            <button type="button" disabled={!patientId || busy !== null || reviewSent} onClick={async () => {
-              if (!patientId || !assessment.reason) return;
-              setBusy("create"); setError(null);
-              try {
-                await submitStaffReview(Number(patientId), assessment.reason);
-                setReviewSent(true);
-              } catch (err) { setError(errorText(err)); }
-              finally { setBusy(null); }
-            }}>
-              {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
-            </button>
-            {!patientId && <p>Выберите пациента, чтобы отправить заявку.</p>}
-          </div>}
-          {Object.keys(assessment.component_scores).length > 0 && <div className="table-wrap"><table className="table">
-            <thead><tr><th>Показатель</th><th>Баллы</th></tr></thead>
-            <tbody>{Object.entries(assessment.component_scores).map(([name, points]) => <tr key={name}>
-              <td>{COMPONENT_LABELS[name] ?? name}</td><td>{points}</td></tr>)}</tbody>
-          </table></div>}
-        </section>}
-        <div className="form-wide">
-          <button type="button" disabled={!canCreate} onClick={() => void createAlert()}>
+          </Button>
+        </Wide>
+        {assessment && (
+          <ResultPanel title={assessment.status === "REVIEW_REQUIRED" ? "Нужна проверка персоналом" : "Результат оценки"}>
+            {assessment.priority && (
+              <p className="m-0 flex items-center gap-2">
+                Приоритет MedBase:
+                <Chip size="sm" variant="primary" color={PRIORITY_COLORS[assessment.priority]} className="font-bold">
+                  {assessment.priority}
+                </Chip>
+              </p>
+            )}
+            {assessment.news2_score !== null && (
+              <p className="m-0">
+                NEWS2: <strong className="text-lg">{assessment.news2_score}</strong>
+                {assessment.news2_risk && ` · риск NEWS2: ${RISK_LABELS[assessment.news2_risk]}`}
+              </p>
+            )}
+            {assessment.classification_basis === "ACUTE_SYMPTOMS_OVERRIDE" && (
+              <p className="m-0">NEWS2 не вычислен: действует отдельное правило острых симптомов.</p>
+            )}
+            <p className="m-0">{assessment.reason}</p>
+            {assessment.status === "REVIEW_REQUIRED" && (
+              <div className="flex flex-col items-start gap-2">
+                <p className="m-0">Это учебная оценка, не диагноз. Заявка не вызывает экстренное оповещение.</p>
+                <Button variant="secondary" isDisabled={!patientId || busy !== null || reviewSent} onPress={async () => {
+                  if (!patientId || !assessment.reason) return;
+                  setBusy("create"); setError(null);
+                  try {
+                    await submitStaffReview(Number(patientId), assessment.reason);
+                    setReviewSent(true);
+                  } catch (err) { setError(errorText(err)); }
+                  finally { setBusy(null); }
+                }}>
+                  {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
+                </Button>
+                {!patientId && <Hint>Выберите пациента, чтобы отправить заявку.</Hint>}
+              </div>
+            )}
+            {Object.keys(assessment.component_scores).length > 0 && (
+              <ScoreTable rows={Object.entries(assessment.component_scores).map(([name, points]) =>
+                [COMPONENT_LABELS[name] ?? name, points] as [string, number])} />
+            )}
+          </ResultPanel>
+        )}
+        <Wide>
+          <Button isDisabled={!canCreate} onPress={() => void createAlert()}>
             {busy === "create" ? "Создание…" : "Создать оповещение по NEWS2"}
-          </button>
-        </div>
-      </form>
-      <aside className="card">
-        <h2>Учебный режим NEWS2</h2>
-        <p className="hint">Вводите синтетические наблюдения. Приоритет рассчитывает сервер; вручную выбрать его в этом режиме нельзя.</p>
-        <ul className="legend">
-          <li><span className="priority priority-CRITICAL">CRITICAL</span><span>сумма NEWS2 от 7</span></li>
-          <li><span className="priority priority-HIGH">HIGH</span><span>сумма 5–6 или отдельный показатель с 3 баллами</span></li>
-          <li><span className="priority priority-LOW">LOW</span><span>сумма 0–4 без отдельного показателя с 3 баллами; это не подтверждение безопасности</span></li>
+          </Button>
+        </Wide>
+      </FormCard>
+      <SideCard title="Учебный режим NEWS2">
+        <p className="m-0">Вводите синтетические наблюдения. Приоритет рассчитывает сервер; вручную выбрать его в этом режиме нельзя.</p>
+        <ul className="m-0 flex list-none flex-col gap-3 p-0">
+          <li className="flex items-start gap-3"><Chip size="sm" variant="soft" color="danger" className="shrink-0">CRITICAL</Chip><span>сумма NEWS2 от 7</span></li>
+          <li className="flex items-start gap-3"><Chip size="sm" variant="soft" color="warning" className="shrink-0">HIGH</Chip><span>сумма 5–6 или отдельный показатель с 3 баллами</span></li>
+          <li className="flex items-start gap-3"><Chip size="sm" variant="soft" className="shrink-0">LOW</Chip><span>сумма 0–4 без отдельного показателя с 3 баллами; это не подтверждение безопасности</span></li>
         </ul>
-        <p className="hint">Острые симптомы включают отдельный CRITICAL override без расчёта NEWS2. Шкалу 2 система сама не выбирает.</p>
-        <p className="hint">Сначала выполните оценку, затем создайте оповещение. Любое изменение данных сбрасывает результат. При создании сервер рассчитывает приоритет повторно.</p>
-        <p className="hint">Сигнал обрабатывается существующим постом медсестры, механизмом эскалации и отчётом. 30 секунд — настройка учебной передачи оповещения, а не клиническая рекомендация NEWS2.</p>
-      </aside>
-    </div>
+        <p className="m-0">Острые симптомы включают отдельный CRITICAL override без расчёта NEWS2. Шкалу 2 система сама не выбирает.</p>
+        <p className="m-0">Сначала выполните оценку, затем создайте оповещение. Любое изменение данных сбрасывает результат. При создании сервер рассчитывает приоритет повторно.</p>
+        <p className="m-0">Сигнал обрабатывается существующим постом медсестры, механизмом эскалации и отчётом. 30 секунд — настройка учебной передачи оповещения, а не клиническая рекомендация NEWS2.</p>
+      </SideCard>
+    </SimLayout>
   );
 }

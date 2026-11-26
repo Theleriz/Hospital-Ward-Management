@@ -25,3 +25,9 @@ export function wardTile(board: Page, wardName: string) {
   const tile = board.getByRole("article", { name: wardName });
   return { tile, alerts: tile.getByRole("listitem") };
 }
+
+/** Pick an option of a HeroUI drop-down: open it by its label, then click the option. */
+export async function chooseOption(page: Page, label: string, option: string) {
+  await page.getByRole("button", { name: new RegExp(label) }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
