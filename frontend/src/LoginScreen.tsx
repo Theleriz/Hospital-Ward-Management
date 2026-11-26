@@ -12,7 +12,7 @@ import { BadgeIcon, ClockIcon, LogoMark, PostIcon, WardsIcon } from "./icons";
 export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void }) {
   const [badgeId, setBadgeId] = useState("");
   const [pin, setPin] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; locked: boolean } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [badgeOnly, setBadgeOnly] = useState(false);
@@ -32,7 +32,12 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
       try {
         onLogin(await login(badge.trim(), withPin));
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : "Сервер недоступен");
+        const invalidMessage = withPin === null
+          ? "Неверный бейдж. Повторите попытку."
+          : "Вы ввели логин или пароль неправильно. Повторите попытку.";
+        setError(err instanceof ApiError
+          ? { message: err.status === 401 ? invalidMessage : err.message, locked: err.status === 429 }
+          : { message: "Сервер недоступен", locked: false });
         setPin("");
         (withPin === null ? badgeRef : pinRef).current?.focus();
       } finally {
@@ -154,9 +159,10 @@ export default function LoginScreen({ onLogin }: { onLogin: (user: User) => void
           )}
 
           {error && (
-            <p className="notice notice-error" role="alert">
-              {error}
-            </p>
+            <div className="notice notice-error" role="alert">
+              {error.locked && <strong className="block">Вход временно заблокирован</strong>}
+              {error.message}
+            </div>
           )}
 
           <button type="submit" className="button-block" disabled={submitting}>

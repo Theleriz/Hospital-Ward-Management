@@ -182,3 +182,4 @@ SELECT "WardID", "WardName", "Capacity", "CurrentOccupancy", "AvailableBeds"
 FROM "vw_WardCapacity" ORDER BY "WardID";
 
 \echo 'Demo finished. Run it again to start from the seed data.'
+\echo 'Browser login demo on test data: four invalid PINs return 401, the fifth immediately returns 429.'

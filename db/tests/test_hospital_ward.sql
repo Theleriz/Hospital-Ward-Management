@@ -797,10 +797,14 @@ CALL pg_temp.expect_true('throttled login does not reveal unknown badges', $q$
     FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300) $q$);
 
 DO $$ BEGIN
-    FOR i IN 1..4 LOOP
+    FOR i IN 1..3 LOOP
         PERFORM * FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300);
     END LOOP;
 END $$;
+
+CALL pg_temp.expect_true('the fifth failure returns LOCKED and the full retry interval', $q$
+    SELECT "Outcome" = 'LOCKED' AND "RetryAfter" = 300 AND "AccountID" IS NULL
+    FROM fn_LoginStaff('UNKNOWN-SQL', '0000', 5, 300) $q$);
 
 CALL pg_temp.expect_true('five failures persist and block subsequent requests', $q$
     SELECT "Outcome" = 'LOCKED' AND "RetryAfter" BETWEEN 1 AND 300

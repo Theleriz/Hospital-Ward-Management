@@ -66,8 +66,13 @@ def test_login_rejects_malformed_pin(client, pin):
 
 def test_badge_is_locked_after_too_many_wrong_pins(client):
     wrong = {"badge_id": NURSE["badge_id"], "pin": "0000"}
-    for _ in range(settings.login_max_failures):
+    for _ in range(settings.login_max_failures - 1):
         assert client.post("/api/auth/login", json=wrong).status_code == 401
+
+    response = client.post("/api/auth/login", json=wrong)
+    assert response.status_code == 429
+    assert int(response.headers["Retry-After"]) == settings.login_lockout_seconds
+    assert response.json()["detail"] == "У вас 5 неудачных попыток входа! Повторите попытку через 5 минут."
 
     # Even the right PIN is refused while the badge is locked
     response = client.post("/api/auth/login", json=NURSE)
