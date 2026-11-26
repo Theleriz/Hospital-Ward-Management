@@ -7,14 +7,16 @@ Seed state (db/04_seed.sql), open alerts:
 Nurses: NURSE-01 ward 101 (primary), NURSE-02 Busy wards 101 and 102 (primary),
 NURSE-03 wards 102 and 103 (primary), NURSE-04 ward 104 (primary),
 NURSE-05 off shift ward 104, NURSE-10 head nurse without a ward.
+When a primary nurse goes off shift, her wards go to the best nurse on shift (T-51).
 """
 
+import psycopg
 import pytest
 
 from app.config import settings
 from app.escalation import escalate_overdue
 from tests.conftest import (
-    ADMISSIONS, HEAD_NURSE, NURSE, NURSE_2, NURSE_3, NURSE_4, NURSE_OFF_SHIFT, PUBLIC_STAFF,
+    ADMIN_URL, ADMISSIONS, HEAD_NURSE, NURSE, NURSE_2, NURSE_3, NURSE_4, NURSE_OFF_SHIFT, PUBLIC_STAFF,
     login, run_as_owner,
 )
 
@@ -205,19 +207,35 @@ def test_simulated_alert_reaches_the_ward_nurse(client):
     assert alert["can_acknowledge"] is True
 
 
-def test_alert_goes_to_another_nurse_when_primary_is_off_shift(client):
-    login(client, NURSE)
-    client.put("/api/nurses/me/status", json={"status": "OffShift"})
+def primary_of(ward_id: int) -> tuple[str, str] | None:
+    """(nurse id, status) of the ward's primary nurse."""
+    with psycopg.connect(ADMIN_URL) as conn:
+        return conn.execute(
+            """SELECT n."NurseID", n."Status" FROM "NurseAssignment" x
+               JOIN "Nurse" n ON n."NurseID" = x."NurseID"
+               WHERE x."WardID" = %s AND x."IsPrimary" """,
+            (ward_id,),
+        ).fetchone()
 
-    # NURSE-02 also works in ward 101 and is on shift (Busy)
-    assert simulate(client)["assigned_nurse_id"] == "NURSE-02"
+
+def test_alert_goes_to_the_new_primary_nurse_when_primary_is_off_shift(client):
+    login(client, NURSE)
+    assert client.put("/api/nurses/me/status", json={"status": "OffShift"}).status_code == 200
+
+    # T-51 (decisions.md record 14): the ward is handed to the best nurse on shift at once,
+    # a free (Available) nurse before a busy one
+    new_primary, status = primary_of(101)
+    assert new_primary != "NURSE-01"
+    assert status == "Available"
+    assert simulate(client)["assigned_nurse_id"] == new_primary
 
 
 def test_alert_without_nurse_on_shift_is_unassigned(client):
+    # Nobody else is on shift, so the handoff has nobody to give ward 104 to
+    run_as_owner("""UPDATE "Nurse" SET "Status" = 'OffShift' WHERE "NurseID" <> 'NURSE-04'""")
     login(client, NURSE_4)
-    client.put("/api/nurses/me/status", json={"status": "OffShift"})
+    assert client.put("/api/nurses/me/status", json={"status": "OffShift"}).status_code == 200
 
-    # Ward 104: NURSE-04 just went off shift, NURSE-05 is off shift
     raised = simulate(client, ward_id=104, patient_id=None, source="CALL_BUTTON", priority="HIGH")
 
     assert raised["assigned_nurse_id"] is None
@@ -257,18 +275,21 @@ def alert_status(client, alert_id: str) -> dict:
 
 
 def test_overdue_alert_is_escalated_to_an_available_nurse(client):
-    # ALT-1001 is 5 minutes old; nobody else in ward 101 is Available, so it goes to
-    # NURSE-04, who works on the same floor (ward 104). ALT-1003 was escalated to
-    # NURSE-03 30 minutes ago and is still not acknowledged, so it goes on as well.
-    assert dict(escalate_overdue(client.app.state.pool)) == {"ALT-1001": "NURSE-04", "ALT-1003": "NURSE-04"}
+    # ALT-1003 (the older one) was escalated to NURSE-03 30 minutes ago and goes on to
+    # NURSE-04, who works on the same floor (ward 104). ALT-1001 is 5 minutes old; NURSE-04
+    # is now answering ALT-1003, so it goes to NURSE-03, who is free (decisions.md, record 13).
+    assert dict(escalate_overdue(client.app.state.pool)) == {"ALT-1003": "NURSE-04", "ALT-1001": "NURSE-03"}
 
     alert = alert_status(client, "ALT-1001")
     assert alert["status"] == "ESCALATED"
-    assert alert["escalated_to_id"] == "NURSE-04"
+    assert alert["escalated_to_id"] == "NURSE-03"
     assert alert["assigned_nurse_id"] == "NURSE-01"
 
 
 def test_escalation_prefers_a_nurse_of_the_same_ward(client):
+    # Only this alert is overdue: the seed alerts would keep NURSE-03 busy (decisions.md, record 13)
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1001', 'NURSE-01')")
+    run_as_owner("CALL sp_AcknowledgeAlert('ALT-1003', 'NURSE-03')")
     login(client, NURSE_2)
     raised = simulate(client, ward_id=102, patient_id=3, priority="HIGH")
     make_old(raised["alert_id"])
