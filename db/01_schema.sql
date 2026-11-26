@@ -8,6 +8,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Cleanup existing objects if re-running
+DROP VIEW IF EXISTS "vw_CorridorAlerts";
 DROP VIEW IF EXISTS "vw_WardCapacity";
 DROP VIEW IF EXISTS "vw_AlertResponse";
 DROP PROCEDURE IF EXISTS sp_RegisterAndAdmitPatient(VARCHAR, DATE, VARCHAR, VARCHAR, INT);
@@ -22,7 +23,6 @@ DROP PROCEDURE IF EXISTS sp_RemoveAdditionalNurse(INT, VARCHAR, VARCHAR, TEXT);
 DROP PROCEDURE IF EXISTS sp_AutoAssignPrimaryNurse(INT, VARCHAR, TEXT, VARCHAR);
 DROP FUNCTION IF EXISTS fn_GetBestNurseForWard(INT, VARCHAR);
 DROP TABLE IF EXISTS "NurseAssignmentLog" CASCADE;
-DROP FUNCTION IF EXISTS fn_NurseAssignmentRequirePrimary();
 DROP FUNCTION IF EXISTS fn_NurseAssignmentLogIsAppendOnly();
 DROP FUNCTION IF EXISTS fn_AuthenticateStaff(VARCHAR, VARCHAR);
 DROP FUNCTION IF EXISTS fn_LoginStaff(VARCHAR, VARCHAR, INTEGER, INTEGER);
@@ -31,6 +31,8 @@ DROP TABLE IF EXISTS "StaffAccount" CASCADE;
 DROP TABLE IF EXISTS "AlertEvent" CASCADE;
 DROP TABLE IF EXISTS "WardAlert" CASCADE;
 DROP TABLE IF EXISTS "NurseAssignment" CASCADE;
+-- After its table: the trigger on "NurseAssignment" depends on this function
+DROP FUNCTION IF EXISTS fn_NurseAssignmentRequirePrimary();
 DROP TABLE IF EXISTS "Nurse" CASCADE;
 DROP TABLE IF EXISTS "Admission" CASCADE;
 DROP TABLE IF EXISTS "Ward" CASCADE;
@@ -112,39 +114,43 @@ CREATE UNIQUE INDEX "UX_NurseAssignment_OnePrimaryPerWard"
     WHERE "IsPrimary";
 
 -- Every ward must keep its primary nurse; removing or demoting a primary
--- nurse is allowed only when another primary nurse is set in the same statement.
+-- nurse is allowed only when another primary nurse takes her place.
+-- The check is a constraint trigger, checked immediately by default, so a
+-- direct DELETE/UPDATE that leaves a ward without a primary nurse fails at once.
+-- The swap procedures defer it for the two-step swap (demote old, promote new)
+-- and switch it back to IMMEDIATE right after, which runs the check there.
 CREATE FUNCTION fn_NurseAssignmentRequirePrimary()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    v_OrphanWardID INT;
 BEGIN
-    -- Allow full table clear during 04_seed.sql reload, but forbid leaving any
-    -- ward without a primary nurse during normal operations.
+    -- Only removing or demoting a primary nurse can leave a ward without one
+    IF NOT OLD."IsPrimary" THEN
+        RETURN NULL;
+    END IF;
+
+    -- Allow full table clear during 04_seed.sql reload
     IF NOT EXISTS (SELECT 1 FROM "NurseAssignment") THEN
         RETURN NULL;
     END IF;
 
-    SELECT w."WardID" INTO v_OrphanWardID
-    FROM "Ward" w
-    WHERE NOT EXISTS (
-        SELECT 1 FROM "NurseAssignment" na
-        WHERE na."WardID" = w."WardID" AND na."IsPrimary"
-    )
-    LIMIT 1;
-
-    IF FOUND THEN
-        RAISE EXCEPTION 'Ward ID % must have exactly one primary nurse.', v_OrphanWardID;
+    -- Check only the ward that lost its primary nurse: a new ward that has
+    -- no nurses assigned yet must not block changes in other wards.
+    IF NOT EXISTS (
+        SELECT 1 FROM "NurseAssignment"
+        WHERE "WardID" = OLD."WardID" AND "IsPrimary"
+    ) THEN
+        RAISE EXCEPTION 'Ward ID % must have exactly one primary nurse.', OLD."WardID";
     END IF;
 
     RETURN NULL;
 END;
 $$;
 
-CREATE TRIGGER "TR_NurseAssignment_RequirePrimary"
+CREATE CONSTRAINT TRIGGER "TR_NurseAssignment_RequirePrimary"
     AFTER UPDATE OF "IsPrimary" OR DELETE ON "NurseAssignment"
-    FOR EACH STATEMENT EXECUTE FUNCTION fn_NurseAssignmentRequirePrimary();
+    DEFERRABLE INITIALLY IMMEDIATE
+    FOR EACH ROW EXECUTE FUNCTION fn_NurseAssignmentRequirePrimary();
 
 -- Table: NurseAssignmentLog (append-only audit journal of ward nurse assignments, T-51)
 CREATE TABLE "NurseAssignmentLog" (

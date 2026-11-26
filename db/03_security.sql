@@ -55,6 +55,28 @@ LEFT JOIN "Nurse" na ON na."NurseID" = a."AssignedNurseID"
 LEFT JOIN "Nurse" ne ON ne."NurseID" = a."EscalatedToNurseID"
 LEFT JOIN "Nurse" nk ON nk."NurseID" = a."AcknowledgedByNurseID";
 
+-- Corridor board: active alerts of each ward without patient data (NFR-03):
+-- no patient, no description, no nurse names, only ward, priority and timing.
+--   IsEscalated  the ward nurse did not answer in time, the alert was passed on (UC-7)
+--   NoNurse      nobody on shift was given the alert yet
+--   OutsideCall  staff from outside the ward's shift team was called: the alert is
+--                escalated to a nurse who is not assigned to this ward
+CREATE OR REPLACE VIEW "vw_CorridorAlerts" AS
+SELECT
+    a."WardID",
+    a."Priority",
+    a."Status",
+    a."CreatedAt",
+    GREATEST(0, FLOOR(EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - a."CreatedAt")))::INT AS "WaitingSeconds",
+    a."Status" = 'ESCALATED' AS "IsEscalated",
+    a."AssignedNurseID" IS NULL AND a."EscalatedToNurseID" IS NULL AS "NoNurse",
+    a."Status" = 'ESCALATED' AND NOT EXISTS (
+        SELECT 1 FROM "NurseAssignment" x
+        WHERE x."WardID" = a."WardID" AND x."NurseID" = a."EscalatedToNurseID"
+    ) AS "OutsideCall"
+FROM "WardAlert" a
+WHERE a."Status" IN ('PENDING', 'ESCALATED');
+
 -- Cluster-wide roles and memberships (also used by scripts/restore-db.sh)
 \ir 00_roles.sql
 
@@ -82,6 +104,9 @@ GRANT EXECUTE ON PROCEDURE sp_DischargePatient(INT) TO medbase_admissions;
 -- Public staff
 GRANT SELECT ON "vw_WardCapacity" TO medbase_public_staff;
 
+-- Corridor board (no login): ward capacity and the alert summary, nothing else
+GRANT SELECT ON "vw_WardCapacity", "vw_CorridorAlerts" TO medbase_board;
+
 -- Nurses: read-only access to alerts and the nurse list (without PIN hashes);
 -- the patient's name is visible so the nurse knows whom the alert is about
 GRANT SELECT ON "WardAlert", "Ward", "NurseAssignment", "vw_WardCapacity" TO medbase_nurse;
@@ -89,6 +114,9 @@ GRANT SELECT ("NurseID", "FullName", "Role", "Status") ON "Nurse" TO medbase_nur
 GRANT SELECT ("PatientID", "FullName") ON "Patient" TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_AcknowledgeAlert(VARCHAR, VARCHAR) TO medbase_nurse;
 GRANT EXECUTE ON PROCEDURE sp_SetNurseStatus(VARCHAR, VARCHAR) TO medbase_nurse;
+-- A nurse who was called for an alert keeps seeing it after the next escalation
+-- (decisions.md, record 13): only who was called, not the full journal with times
+GRANT SELECT ("AlertID", "EventType", "NurseID") ON "AlertEvent" TO medbase_nurse;
 
 -- Head nurse: the response-time report and the full alert journal (UC-8, FR-31);
 -- ward nurses do not get them
