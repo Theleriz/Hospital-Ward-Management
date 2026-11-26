@@ -6,6 +6,7 @@ from psycopg import Error as DatabaseError
 from psycopg_pool import PoolTimeout
 
 from app.auth import SESSION_KEY, User, authenticate, current_user
+from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -13,7 +14,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     # The badge reader types the badge ID like a keyboard
     badge_id: str = Field(min_length=1, max_length=32)
-    pin: str = Field(pattern=r"^[0-9]{4,8}$")
+    # None only in the demo badge-only mode (MEDBASE_DEMO_BADGE_LOGIN)
+    pin: str | None = Field(default=None, pattern=r"^[0-9]{4,8}$")
 
     @field_validator('badge_id')
     @classmethod
@@ -27,6 +29,8 @@ class LoginRequest(BaseModel):
 @router.post("/login")
 def login(body: LoginRequest, request: Request) -> User:
     badge_id = body.badge_id.strip()
+    if body.pin is None and not settings.demo_badge_login:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Введите PIN")
 
     try:
         with request.app.state.pool.connection() as conn:
@@ -49,6 +53,17 @@ def login(body: LoginRequest, request: Request) -> User:
     request.session.clear()
     request.session[SESSION_KEY] = result.user.model_dump(mode="json")
     return result.user
+
+
+class LoginOptions(BaseModel):
+    # Demo: the badge alone logs in, the login screen does not ask for the PIN
+    badge_only: bool
+
+
+@router.get("/options")
+def options() -> LoginOptions:
+    """How the login screen should ask: with or without the PIN."""
+    return LoginOptions(badge_only=settings.demo_badge_login)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

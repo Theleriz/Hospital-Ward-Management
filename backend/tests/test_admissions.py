@@ -31,9 +31,11 @@ def test_every_role_sees_the_ward_board(client, account):
 
     wards = wards_by_id(client)
 
-    assert set(wards) == {101, 102, 103, 104}
+    assert set(wards) == {101, 102, 103, 104, 105}
     assert wards[101]["occupied"] == 2 and wards[101]["available"] == 0
     assert wards[102]["available"] == 2
+    assert wards[105]["ward_name"] == "Детская палата"
+    assert wards[105]["ward_type"] == "Paediatrics"
 
 
 def test_ward_board_has_no_patient_data(client):
@@ -84,6 +86,22 @@ def test_admit_new_patient(client):
     assert body["full_name"] == "Dana Seitkali"
     assert body["ward_id"] == 104
     assert wards_by_id(client)[104]["occupied"] == 1
+
+
+def test_admit_patient_to_pediatric_ward(client):
+    login(client, ADMISSIONS)
+
+    response = client.post("/api/admissions", json={
+        "full_name": "Ребёнок Тестовый",
+        "dob": "2018-11-25",
+        "phone": "+77015550110",
+        "gender": "Female",
+        "ward_id": 105,
+    })
+
+    assert response.status_code == 201, response.text
+    assert response.json()["ward_id"] == 105
+    assert wards_by_id(client)[105]["occupied"] == 1
 
 
 def test_returning_patient_is_found_by_phone(client):

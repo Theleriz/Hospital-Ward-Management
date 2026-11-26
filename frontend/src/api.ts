@@ -5,7 +5,7 @@ export type Health = {
   database: "ok" | "unavailable";
 };
 
-export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse";
+export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse" | "Doctor";
 
 export type User = {
   account_id: string;
@@ -18,6 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   PublicStaff: "Персонал",
   Nurse: "Медсестра",
   HeadNurse: "Старшая медсестра",
+  Doctor: "Врач",
 };
 
 export class ApiError extends Error {
@@ -68,6 +69,8 @@ const FIELD_LABELS: Record<string, string> = {
   measurement_confirmed: "достоверность измерений",
   scale2_confirmed: "подтверждение шкалы SpO₂ 2",
   spo2_scale: "шкала SpO₂",
+  nurse_id: "медсестра",
+  reason: "причина",
 };
 
 // FastAPI puts the message in "detail": a string, or a list of invalid fields
@@ -89,11 +92,18 @@ export async function getHealth(): Promise<Health> {
   return response.json();
 }
 
-export function login(badgeId: string, pin: string): Promise<User> {
+// pin=null: demo badge-only login, accepted only when the server has it switched on
+export function login(badgeId: string, pin: string | null): Promise<User> {
   return request("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ badge_id: badgeId, pin }),
+    body: JSON.stringify(pin === null ? { badge_id: badgeId } : { badge_id: badgeId, pin }),
   });
+}
+
+export type LoginOptions = { badge_only: boolean };
+
+export function getLoginOptions(): Promise<LoginOptions> {
+  return request("/api/auth/options");
 }
 
 export function logout(): Promise<void> {
@@ -229,7 +239,7 @@ export function setMyStatus(status: NurseStatus): Promise<NurseInfo> {
 export type SimulatorWard = {
   ward_id: number;
   ward_name: string;
-  patients: { patient_id: number; full_name: string }[];
+  patients: { patient_id: number; full_name: string; age_days?: number | null }[];
   nurse_on_duty: string | null;
 };
 
@@ -247,6 +257,20 @@ export function getSimulatorWards(): Promise<SimulatorWard[]> {
 
 export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
+}
+
+export type StaffReviewRequest = {
+  request_id: number; patient_id: number; patient_name: string; patient_dob: string; reason: string;
+  requested_by: string; created_at: string; status: "PENDING" | "REVIEWED";
+  reviewed_by: string | null; reviewed_at: string | null;
+};
+
+export function submitStaffReview(patientId: number, reason: string): Promise<StaffReviewRequest> {
+  return request("/api/staff-reviews", { method: "POST", body: JSON.stringify({ patient_id: patientId, reason }) });
+}
+export function getStaffReviews(): Promise<StaffReviewRequest[]> { return request("/api/staff-reviews"); }
+export function markStaffReviewReviewed(id: number): Promise<StaffReviewRequest> {
+  return request(`/api/staff-reviews/${id}/reviewed`, { method: "POST" });
 }
 
  // --- Emergency Priority Detection (Week 12, demo only) ------------------
@@ -400,4 +424,172 @@ export function raiseNews2Alert(input: {
   vitals: News2VitalSigns;
 }): Promise<{ alert_id: string; assigned_nurse_id: string | null; assessment: News2Assessment }> {
   return request("/api/simulator/alerts/from-vitals", { method: "POST", body: JSON.stringify(input) });
+}
+
+// --- NHS England inpatient PEWS (educational only; never creates an alert) ---
+
+export type PewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  signals: string[];
+  reason: string;
+  chart_key: string | null;
+  chart_name: string | null;
+  source_url: string;
+  risk_band?: "LOW" | "MEDIUM" | "HIGH" | "EMERGENCY" | null;
+  policy_version: string;
+};
+
+export type PewsInput = {
+  patient_id: number;
+  respiratory_rate: number | null;
+  respiratory_distress: "NONE" | "MILD" | "MODERATE" | "SEVERE" | null;
+  spo2: number | null;
+  oxygen_device: "AIR" | "OXYGEN" | "HIGH_FLOW" | "BIPAP" | "CPAP" | null;
+  oxygen_delivery_pct: number | null;
+  oxygen_delivery_lpm: number | null;
+  oxygen_delivery_unit: "PERCENT" | "L_MIN" | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  systolic_code: "NCO" | "U0" | "U4" | null;
+  crt_seconds: number | null;
+  temperature: number | null;
+  temperature_route: "AXILLA" | "TYMPANIC" | "SKIN" | null;
+  avpu: "A" | "V" | "P" | "U" | null;
+  sepsis_suspected: boolean | null;
+  septic_shock_suspected: boolean | null;
+  clinical_intuition: boolean | null;
+  carer_response: "W" | "S" | "B" | "A" | "U" | null;
+  risk_factors_confirmed: boolean | null;
+  risk_factors: string[] | null;
+  measurement_confirmed: boolean;
+};
+
+export function assessPews(input: PewsInput): Promise<PewsAssessment> {
+  return request("/api/simulator/assess-pews", { method: "POST", body: JSON.stringify(input) });
+}
+
+// --- NHS England national maternity MEWS (educational only) -----------------
+
+export type MaternalMewsInput = {
+  patient_id: number;
+  maternal_status: "PREGNANT" | "POSTPARTUM" | null;
+  status_confirmed: boolean;
+  delivery_at: string | null;
+  respiratory_rate: number | null;
+  spo2: number | null;
+  temperature: number | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  measurements_confirmed: boolean;
+  additional_concerns_confirmed: boolean;
+  additional_concerns: string[] | null;
+};
+
+export type MaternalMewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  additional_concerns: string[];
+  risk_level: "LOW" | "LOW_MEDIUM" | "MEDIUM" | "HIGH" | null;
+  pulse_rule: "ANTENATAL" | "POSTPARTUM_UNDER_48H" | "POSTPARTUM_48H_PLUS" | null;
+  reason: string;
+  policy_version: string;
+  source_url: string;
+  scope_source_url: string;
+};
+
+export function assessMaternalMews(input: MaternalMewsInput): Promise<MaternalMewsAssessment> {
+  return request("/api/simulator/assess-maternal-mews", {
+    method: "POST", body: JSON.stringify(input),
+  });
+}
+
+// --- Ward nurse assignments (head nurse, T-51) -----------------------------------------------
+
+export type AssignedNurse = {
+  nurse_id: string;
+  full_name: string;
+  status: NurseStatus;
+  is_primary: boolean;
+};
+
+export type WardAssignment = {
+  ward_id: number;
+  ward_name: string;
+  primary_nurse_id: string | null;
+  nurses: AssignedNurse[];
+};
+
+export type NurseOption = {
+  nurse_id: string;
+  full_name: string;
+  role: Role;
+  status: NurseStatus;
+};
+
+export type AssignmentBoard = { wards: WardAssignment[]; nurses: NurseOption[] };
+
+export type AssignmentAction = "ASSIGN_PRIMARY" | "ASSIGN_ADDITIONAL" | "REMOVE_ADDITIONAL" | "AUTO_ASSIGN_PRIMARY";
+
+export type AssignmentLogEntry = {
+  log_id: number;
+  changed_at: string;
+  ward_id: number;
+  ward_name: string;
+  action: AssignmentAction;
+  nurse_id: string;
+  nurse_name: string;
+  previous_primary_nurse_id: string | null;
+  changed_by_nurse_id: string | null;
+  changed_by_name: string | null;
+  reason: string | null;
+};
+
+export function getAssignments(): Promise<AssignmentBoard> {
+  return request("/api/assignments");
+}
+
+export function setPrimaryNurse(wardId: number, nurseId: string, reason: string | null): Promise<WardAssignment> {
+  return request(`/api/assignments/${wardId}/primary`, {
+    method: "PUT",
+    body: JSON.stringify({ nurse_id: nurseId, reason }),
+  });
+}
+
+export function addWardNurse(wardId: number, nurseId: string, reason: string | null): Promise<WardAssignment> {
+  return request(`/api/assignments/${wardId}/nurses`, {
+    method: "POST",
+    body: JSON.stringify({ nurse_id: nurseId, reason }),
+  });
+}
+
+export function removeWardNurse(wardId: number, nurseId: string, reason: string | null): Promise<void> {
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : "";
+  return request(`/api/assignments/${wardId}/nurses/${encodeURIComponent(nurseId)}${query}`, { method: "DELETE" });
+}
+
+export function getAssignmentLog(wardId: number | null, limit = 50): Promise<AssignmentLogEntry[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (wardId !== null) params.set("ward_id", String(wardId));
+  return request(`/api/assignments/log?${params}`);
+}
+
+// --- Badges with a barcode (head nurse) ------------------------------------------------------
+
+export type Badge = {
+  person_id: string;
+  full_name: string;
+  role: string;
+  badge_id: string;
+};
+
+export function getBadges(): Promise<Badge[]> {
+  return request("/api/badges");
+}
+
+export function reissueBadge(personId: string): Promise<Badge> {
+  return request(`/api/badges/${encodeURIComponent(personId)}/reissue`, { method: "POST" });
 }

@@ -79,9 +79,9 @@ $$;
 -- -----------------------------------------------------------------------------
 -- 0. Seed state
 -- -----------------------------------------------------------------------------
-CALL pg_temp.expect_true('seed: 8 patients, 4 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
+CALL pg_temp.expect_true('seed: 8 patients, 5 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
     SELECT (SELECT COUNT(*) FROM "Patient") = 8
-       AND (SELECT COUNT(*) FROM "Ward") = 4
+       AND (SELECT COUNT(*) FROM "Ward") = 5
        AND (SELECT COUNT(*) FROM "Admission") = 6
        AND (SELECT COUNT(*) FROM "Nurse") = 6
        AND (SELECT COUNT(*) FROM "NurseAssignment") = 7
@@ -123,6 +123,20 @@ CALL pg_temp.expect_true('seed: nurse PINs are bcrypt hashes of the documented t
 CALL pg_temp.expect_true('view: ward 101 is full, ward 102 has 2 free beds', $q$
     SELECT (SELECT "AvailableBeds" FROM "vw_WardCapacity" WHERE "WardID" = 101) = 0
        AND (SELECT "AvailableBeds" FROM "vw_WardCapacity" WHERE "WardID" = 102) = 2 $q$);
+
+-- Corridor board view (part 4): only ward, priority and timing of active alerts
+CALL pg_temp.expect_true('corridor view: the 3 active seed alerts, acknowledged ones left out', $q$
+    SELECT array_agg(("WardID", "Priority", "Status")::TEXT ORDER BY "CreatedAt")
+           = ARRAY['(101,CRITICAL,ESCALATED)', '(101,CRITICAL,PENDING)', '(102,HIGH,PENDING)']
+    FROM "vw_CorridorAlerts" $q$);
+
+CALL pg_temp.expect_true('corridor view: ALT-1003 escalated to NURSE-03 from another ward is an outside call', $q$
+    SELECT "IsEscalated" AND "OutsideCall" AND NOT "NoNurse" AND "WaitingSeconds" >= 1800
+    FROM "vw_CorridorAlerts" WHERE "Status" = 'ESCALATED' $q$);
+
+CALL pg_temp.expect_true('corridor view: pending alerts are not escalated and have a nurse', $q$
+    SELECT bool_and(NOT "IsEscalated" AND NOT "OutsideCall" AND NOT "NoNurse")
+    FROM "vw_CorridorAlerts" WHERE "Status" = 'PENDING' $q$);
 
 -- -----------------------------------------------------------------------------
 -- 1. Constraints (PK / FK / CHECK / UNIQUE / NOT NULL)
@@ -809,12 +823,51 @@ CALL pg_temp.expect_error('backend role cannot read PIN hashes of staff accounts
 CALL pg_temp.expect_true('backend role can switch to every user role but inherits none of them', $q$
     SELECT bool_and(pg_has_role('medbase_api', r, 'SET') AND NOT pg_has_role('medbase_api', r, 'USAGE'))
     FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_head_nurse',
+                  'medbase_alert_service', 'medbase_board']) r $q$);
+
+-- -----------------------------------------------------------------------------
+-- 12. Corridor board (part 4, NFR-03): role medbase_board sees no patient data
+-- -----------------------------------------------------------------------------
+CALL pg_temp.expect_true('corridor view has no patient, description or nurse columns', $q$
+    SELECT array_agg(column_name::TEXT ORDER BY column_name::TEXT)
+           = ARRAY['CreatedAt', 'IsEscalated', 'NoNurse', 'OutsideCall', 'Priority', 'Status',
+                   'WaitingSeconds', 'WardID']
+    FROM information_schema.columns WHERE table_name = 'vw_CorridorAlerts' $q$);
+
+CALL pg_temp.expect_true('corridor view lists exactly the alerts nobody acknowledged yet', $q$
+    SELECT (SELECT COUNT(*) FROM "vw_CorridorAlerts")
+         = (SELECT COUNT(*) FROM "WardAlert" WHERE "Status" <> 'ACKNOWLEDGED') $q$);
+
+CALL pg_temp.expect_ok('board role reads the corridor view and ward capacity', $q$
+    SELECT 1 FROM "vw_CorridorAlerts", "vw_WardCapacity" LIMIT 1 $q$, 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read alerts with descriptions', $q$
+    SELECT * FROM "WardAlert" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read patients', $q$
+    SELECT * FROM "Patient" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read admissions', $q$
+    SELECT * FROM "Admission" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read nurses', $q$
+    SELECT * FROM "Nurse" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot read the head nurse report', $q$
+    SELECT * FROM "vw_AlertResponse" $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_error('board role cannot acknowledge alerts', $q$
+    CALL sp_AcknowledgeAlert('ALT-1005', 'NURSE-02') $q$, 'permission denied%', 'medbase_board');
+
+CALL pg_temp.expect_true('no user role is a member of the board role, and it is a member of none', $q$
+    SELECT bool_and(NOT pg_has_role(r, 'medbase_board', 'MEMBER') AND NOT pg_has_role('medbase_board', r, 'MEMBER'))
+    FROM unnest(ARRAY['medbase_admissions', 'medbase_public_staff', 'medbase_nurse', 'medbase_head_nurse',
                   'medbase_alert_service']) r $q$);
 
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
--- 12. Ward nurse assignments, best-nurse algorithm & audit log (T-51)
+-- 13. Ward nurse assignments, best-nurse algorithm & audit log (T-51)
 -- -----------------------------------------------------------------------------
 CALL pg_temp.expect_error('cannot delete the primary nurse of a ward directly', $q$
     DELETE FROM "NurseAssignment" WHERE "WardID" = 104 AND "IsPrimary" $q$,

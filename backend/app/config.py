@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     login_max_failures: int = Field(default=5, ge=1, le=1000)
     login_lockout_seconds: int = Field(default=5 * 60, ge=1, le=86400)
 
+    # DEMO ONLY: the badge alone logs in, no PIN (decisions.md, record 16). A photo of
+    # a badge barcode is then enough to log in, so never turn this on for real use.
+    demo_badge_login: bool = False
+
     # Background escalation of overdue HIGH/CRITICAL alerts (UC-7)
     escalation_enabled: bool = True
     escalation_interval_seconds: float = 2.0
@@ -31,6 +35,18 @@ class Settings(BaseSettings):
     # Device simulator for demos: stands in for patient monitors and call buttons.
     # Turn off for any real installation.
     simulator_enabled: bool = True
+
+    # Corridor board (part 4): no login, so access is limited by where the request comes from.
+    # Comma-separated networks that may open the board: loopback and private ranges by default.
+    board_allowed_networks: str = "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+    # Comma-separated secret tokens of known screens outside those networks (sent as
+    # X-Board-Screen); empty means none. Use long random values.
+    board_screen_tokens: str = ""
+    # Proxies whose X-Real-IP header is believed (the board's nginx); requests from any
+    # other address are judged by their own address, so the header cannot be forged.
+    board_trusted_proxies: str = "127.0.0.0/8,::1/128,172.16.0.0/12"
+    # How often the board asks for a new summary (the task asks for 1-2 seconds)
+    board_refresh_seconds: float = Field(default=1.5, ge=1.0, le=2.0)
 
 
 settings = Settings()

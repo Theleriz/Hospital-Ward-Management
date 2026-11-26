@@ -16,6 +16,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_public_staff') THEN
         CREATE ROLE medbase_public_staff NOLOGIN;  -- other hospital staff
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_doctor') THEN
+        CREATE ROLE medbase_doctor NOLOGIN;  -- doctor review queue only
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_nurse') THEN
         CREATE ROLE medbase_nurse NOLOGIN;  -- ward nurses
     END IF;
@@ -24,6 +27,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_alert_service') THEN
         CREATE ROLE medbase_alert_service NOLOGIN;  -- escalation worker, device simulator
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'medbase_board') THEN
+        CREATE ROLE medbase_board NOLOGIN;  -- corridor board: ward summary only, no patient data
     END IF;
     -- The backend logs in as medbase_api. NOINHERIT: on its own it has no access to
     -- the data; for every request it switches (SET ROLE) to the role of the signed-in
@@ -35,7 +41,8 @@ BEGIN
 END;
 $$;
 
-GRANT medbase_admissions, medbase_public_staff, medbase_nurse, medbase_head_nurse, medbase_alert_service
+GRANT medbase_admissions, medbase_public_staff, medbase_doctor, medbase_nurse, medbase_head_nurse,
+      medbase_alert_service, medbase_board
     TO medbase_api;
 
 -- The head nurse can do everything a nurse can (inherits medbase_nurse)

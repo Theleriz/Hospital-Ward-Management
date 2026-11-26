@@ -1,6 +1,8 @@
 import { useEffect, useState, type ComponentType } from "react";
 
 import AdmissionsPage from "./AdmissionsPage";
+import AssignmentsPage from "./AssignmentsPage";
+import BadgesPage from "./BadgesPage";
 import {
   getCurrentUser,
   getHealth,
@@ -13,6 +15,8 @@ import {
 } from "./api";
 import {
   AdmissionsIcon,
+  AssignmentsIcon,
+  BadgeIcon,
   LogoMark,
   LogoutIcon,
   MoonIcon,
@@ -26,12 +30,13 @@ import LoginScreen from "./LoginScreen";
 import NursePost from "./NursePost";
 import ReportPage from "./ReportPage";
 import SimulatorPage from "./SimulatorPage";
+import StaffReviewPage from "./StaffReviewPage";
 import { useTheme } from "./theme";
 import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "post" | "report" | "wards" | "simulator";
+type Page = "admissions" | "post" | "report" | "assignments" | "badges" | "wards" | "simulator" | "reviews";
 
 type PageInfo = {
   label: string;
@@ -58,6 +63,16 @@ const PAGE_INFO: Record<Page, PageInfo> = {
     icon: ReportIcon,
     description: () => "Время реакции, эскалации и история оповещений отделения",
   },
+  assignments: {
+    label: "Назначения",
+    icon: AssignmentsIcon,
+    description: () => "Кто работает в каких палатах: основная и дополнительные медсёстры",
+  },
+  badges: {
+    label: "Бейджи",
+    icon: BadgeIcon,
+    description: () => "Печать бейджей со штрих-кодом и перевыпуск утерянных",
+  },
   wards: {
     label: "Палаты",
     icon: WardsIcon,
@@ -68,6 +83,11 @@ const PAGE_INFO: Record<Page, PageInfo> = {
     icon: SimulatorIcon,
     description: () => "Демонстрационная замена мониторов пациента и кнопок вызова",
   },
+  reviews: {
+    label: "На проверку",
+    icon: AdmissionsIcon,
+    description: () => "Заявки персонала по пациентам, требующим проверки",
+  },
 };
 
 // Screens each role can open; the first one opens after login
@@ -75,7 +95,8 @@ const PAGES: Record<Role, Page[]> = {
   Admissions: ["admissions", "wards"],
   PublicStaff: ["wards"],
   Nurse: ["post", "wards", "simulator"],
-  HeadNurse: ["report", "post", "wards", "simulator"],
+  HeadNurse: ["report", "post", "assignments", "badges", "wards", "simulator"],
+  Doctor: ["reviews"],
 };
 
 export default function App() {
@@ -187,8 +208,11 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         {page === "admissions" && <AdmissionsPage />}
         {page === "post" && <NursePost headNurse={user.role === "HeadNurse"} />}
         {page === "report" && <ReportPage />}
+        {page === "assignments" && <AssignmentsPage />}
+        {page === "badges" && <BadgesPage />}
         {page === "wards" && <WardBoard />}
         {page === "simulator" && <SimulatorPage />}
+        {page === "reviews" && <StaffReviewPage />}
       </main>
     </div>
   );

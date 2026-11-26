@@ -35,7 +35,7 @@
 -- =============================================================================
 
 -- Clear existing data and reset sequence counters
-TRUNCATE TABLE "LoginThrottle", "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "StaffAccount",
+TRUNCATE TABLE "LoginThrottle", "RetiredBadge", "AlertEvent", "WardAlert", "NurseAssignment", "Nurse", "StaffAccount",
     "Admission", "Ward", "Patient"
     RESTART IDENTITY CASCADE;
 
@@ -59,7 +59,8 @@ INSERT INTO "Ward" ("WardID", "WardName", "FloorNum", "Capacity", "WardType") VA
 (101, 'ICU Unit A', 1, 2, 'Intensive Care'),
 (102, 'General Medical Ward 1', 2, 4, 'General Medicine'),
 (103, 'Surgical Recovery Ward', 2, 3, 'Surgery'),
-(104, 'Emergency Overflow Ward', 1, 5, 'Emergency');
+(104, 'Emergency Overflow Ward', 1, 5, 'Emergency'),
+(105, 'Детская палата', 1, 8, 'Paediatrics');
 
 -- -----------------------------------------------------------------------------
 -- 3. SEED ADMISSIONS (Historical & Current Active Admissions)
