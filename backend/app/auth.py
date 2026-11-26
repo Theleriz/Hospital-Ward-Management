@@ -21,6 +21,7 @@ class Role(StrEnum):
     PUBLIC_STAFF = "PublicStaff"
     NURSE = "Nurse"
     HEAD_NURSE = "HeadNurse"
+    DOCTOR = "Doctor"
 
 
 # Database role the backend switches to for each user role (db/03_security.sql)
@@ -30,6 +31,7 @@ DB_ROLES: dict[Role, str] = {
     Role.NURSE: "medbase_nurse",
     # A nurse plus the report and the alert journal (UC-8)
     Role.HEAD_NURSE: "medbase_head_nurse",
+    Role.DOCTOR: "medbase_doctor",
 }
 
 

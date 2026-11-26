@@ -195,6 +195,6 @@ def test_local_role_does_not_leak_to_next_pool_user(rollback):
 
         with role_connection(pool, "medbase_public_staff") as conn:
             assert conn.execute("SELECT pg_backend_pid()").fetchone()[0] == pid
-            assert conn.execute('SELECT COUNT(*) FROM "vw_WardCapacity"').fetchone()[0] == 4
+            assert conn.execute('SELECT COUNT(*) FROM "vw_WardCapacity"').fetchone()[0] == 5
             with pytest.raises(errors.InsufficientPrivilege):
                 conn.execute('SELECT "Phone" FROM "Patient"')

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import {
-  ApiError, assessNews2Vitals, raiseNews2Alert,
+  ApiError, assessNews2Vitals, raiseNews2Alert, submitStaffReview,
   type News2Assessment, type News2Consciousness, type News2VitalSigns, type SimulatorWard,
 } from "./api";
 
@@ -47,6 +47,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
   const [confirmed, setConfirmed] = useState(false);
   const [acute, setAcute] = useState(false);
   const [assessment, setAssessment] = useState<News2Assessment | null>(null);
+  const [reviewSent, setReviewSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<"assess" | "create" | null>(null);
@@ -59,7 +60,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
     const first = wards.find((w) => w.patients.length) ?? wards[0];
     if (first) {
       setWardId(String(first.ward_id));
-      setPatientId(first.patients[0] ? String(first.patients[0].patient_id) : "");
+      setPatientId("");
     }
   }, [wards, wardId]);
 
@@ -75,6 +76,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
     revision.current += 1;
     assessedRevision.current = -1;
     setAssessment(null);
+    setReviewSent(false);
     setError(null);
     setNotice(null);
   }
@@ -89,8 +91,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
   function chooseWard(value: string) {
     resetEpisode();
     setWardId(value);
-    const next = wards.find((w) => String(w.ward_id) === value);
-    setPatientId(next?.patients[0] ? String(next.patients[0].patient_id) : "");
+    setPatientId("");
   }
 
   function fillExample() {
@@ -123,7 +124,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
 
   async function assess(event: FormEvent) {
     event.preventDefault();
-    if (inFlight.current) return;
+    if (inFlight.current || !wardId || !patientId) return;
     invalidate();
     const currentRevision = revision.current;
     try {
@@ -143,7 +144,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
   }
 
   async function createAlert() {
-    if (inFlight.current || !wardId || assessment?.status !== "CLASSIFIED" || !assessment.priority
+    if (inFlight.current || !wardId || !patientId || assessment?.status !== "CLASSIFIED" || !assessment.priority
         || assessedRevision.current !== revision.current) return;
     const currentRevision = revision.current;
     try {
@@ -152,7 +153,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
       setBusy("create");
       setError(null); setNotice(null);
       const raised = await raiseNews2Alert({ ward_id: Number(wardId),
-        patient_id: patientId ? Number(patientId) : null, vitals });
+        patient_id: Number(patientId), vitals });
       if (revision.current !== currentRevision) return;
       setAssessment(null);
       assessedRevision.current = -1;
@@ -166,7 +167,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
     }
   }
 
-  const canCreate = !!wardId && assessment?.status === "CLASSIFIED" && !!assessment.priority
+  const canCreate = !!wardId && !!patientId && assessment?.status === "CLASSIFIED" && !!assessment.priority
     && assessedRevision.current === revision.current && busy === null;
 
   return (
@@ -183,9 +184,9 @@ export default function News2Simulator({ wards, onBusyChange }: {
           <span className="hint">Получит: {ward?.nurse_on_duty ?? "нет медсестры палаты на смене"}</span>
         </label>
         <label>Пациент
-          <select value={patientId} disabled={locked} onChange={(e) => { resetEpisode(); setPatientId(e.target.value); }}>
+          <select value={patientId} required disabled={locked} onChange={(e) => { resetEpisode(); setPatientId(e.target.value); }}>
+            <option value="">Выберите госпитализированного пациента</option>
             {ward?.patients.map((p) => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
-            <option value="">без привязки — учебные данные</option>
           </select>
         </label>
         <div className="form-wide">
@@ -245,7 +246,7 @@ export default function News2Simulator({ wards, onBusyChange }: {
           Сообщены острые симптомы — требуется срочная оценка персоналом
         </label>
         <div className="form-wide">
-          <button type="submit" disabled={busy !== null || !wardId}>
+          <button type="submit" disabled={busy !== null || !wardId || !patientId}>
             {busy === "assess" ? "Расчёт…" : "Рассчитать приоритет"}
           </button>
         </div>
@@ -256,6 +257,21 @@ export default function News2Simulator({ wards, onBusyChange }: {
             {assessment.news2_risk && ` · риск NEWS2: ${RISK_LABELS[assessment.news2_risk]}`}</p>}
           {assessment.classification_basis === "ACUTE_SYMPTOMS_OVERRIDE" && <p>NEWS2 не вычислен: действует отдельное правило острых симптомов.</p>}
           <p>{assessment.reason}</p>
+          {assessment.status === "REVIEW_REQUIRED" && <div>
+            <p>Это учебная оценка, не диагноз. Заявка не вызывает экстренное оповещение.</p>
+            <button type="button" disabled={!patientId || busy !== null || reviewSent} onClick={async () => {
+              if (!patientId || !assessment.reason) return;
+              setBusy("create"); setError(null);
+              try {
+                await submitStaffReview(Number(patientId), assessment.reason);
+                setReviewSent(true);
+              } catch (err) { setError(errorText(err)); }
+              finally { setBusy(null); }
+            }}>
+              {reviewSent ? "Отправлено на проверку" : "Отправить на проверку"}
+            </button>
+            {!patientId && <p>Выберите пациента, чтобы отправить заявку.</p>}
+          </div>}
           {Object.keys(assessment.component_scores).length > 0 && <div className="table-wrap"><table className="table">
             <thead><tr><th>Показатель</th><th>Баллы</th></tr></thead>
             <tbody>{Object.entries(assessment.component_scores).map(([name, points]) => <tr key={name}>

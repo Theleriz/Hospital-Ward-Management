@@ -79,9 +79,9 @@ $$;
 -- -----------------------------------------------------------------------------
 -- 0. Seed state
 -- -----------------------------------------------------------------------------
-CALL pg_temp.expect_true('seed: 8 patients, 4 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
+CALL pg_temp.expect_true('seed: 8 patients, 5 wards, 6 admissions, 6 nurses, 7 assignments, 6 alerts', $q$
     SELECT (SELECT COUNT(*) FROM "Patient") = 8
-       AND (SELECT COUNT(*) FROM "Ward") = 4
+       AND (SELECT COUNT(*) FROM "Ward") = 5
        AND (SELECT COUNT(*) FROM "Admission") = 6
        AND (SELECT COUNT(*) FROM "Nurse") = 6
        AND (SELECT COUNT(*) FROM "NurseAssignment") = 7
