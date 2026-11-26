@@ -26,6 +26,8 @@ DROP TABLE IF EXISTS "NurseAssignmentLog" CASCADE;
 DROP FUNCTION IF EXISTS fn_NurseAssignmentLogIsAppendOnly();
 DROP FUNCTION IF EXISTS fn_AuthenticateStaff(VARCHAR, VARCHAR);
 DROP FUNCTION IF EXISTS fn_LoginStaff(VARCHAR, VARCHAR, INTEGER, INTEGER);
+DROP TABLE IF EXISTS "DoctorPatientAssignment";
+DROP TABLE IF EXISTS "StaffReviewRequest";
 DROP TABLE IF EXISTS "LoginThrottle";
 DROP TABLE IF EXISTS "StaffAccount" CASCADE;
 DROP TABLE IF EXISTS "AlertEvent" CASCADE;
@@ -193,8 +195,35 @@ CREATE TABLE "StaffAccount" (
     "FullName" VARCHAR(100) NOT NULL,
     "BadgeID" VARCHAR(32) NOT NULL UNIQUE,
     "PinHash" TEXT NOT NULL CONSTRAINT "CK_StaffAccount_PinIsBcrypt" CHECK ("PinHash" ~ '^\$2[aby]\$\d{2}\$.{53}$'),
-    "Role" VARCHAR(20) NOT NULL CHECK ("Role" IN ('Admissions', 'PublicStaff')),
+    "Role" VARCHAR(20) NOT NULL CHECK ("Role" IN ('Admissions', 'PublicStaff', 'Doctor')),
     "IsActive" BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Staff review requests are created only by an explicit user action. A partial
+-- unique index makes repeated submissions idempotent while a request is pending.
+CREATE TABLE "StaffReviewRequest" (
+    "RequestID" BIGSERIAL PRIMARY KEY,
+    "PatientID" INT NOT NULL REFERENCES "Patient"("PatientID") ON DELETE RESTRICT,
+    "Reason" TEXT NOT NULL CHECK (length(btrim("Reason")) BETWEEN 1 AND 1000),
+    "RequestedBy" VARCHAR(20) NOT NULL,
+    "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "Status" VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK ("Status" IN ('PENDING', 'REVIEWED')),
+    "ReviewedBy" VARCHAR(20) REFERENCES "StaffAccount"("AccountID") ON DELETE RESTRICT,
+    "ReviewedAt" TIMESTAMPTZ,
+    CONSTRAINT "CK_StaffReviewRequest_ReviewFields" CHECK (
+        ("Status" = 'PENDING' AND "ReviewedBy" IS NULL AND "ReviewedAt" IS NULL)
+        OR ("Status" = 'REVIEWED' AND "ReviewedBy" IS NOT NULL AND "ReviewedAt" IS NOT NULL)
+    )
+);
+CREATE UNIQUE INDEX "UX_StaffReviewRequest_OnePendingPerPatient"
+    ON "StaffReviewRequest" ("PatientID") WHERE "Status" = 'PENDING';
+
+-- Explicit doctor-to-patient assignment; the application has no assignment UI.
+CREATE TABLE "DoctorPatientAssignment" (
+    "DoctorAccountID" VARCHAR(20) NOT NULL REFERENCES "StaffAccount"("AccountID") ON DELETE CASCADE,
+    "PatientID" INT NOT NULL REFERENCES "Patient"("PatientID") ON DELETE CASCADE,
+    "AssignedAt" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY ("DoctorAccountID", "PatientID")
 );
 
 -- A badge identifies exactly one person across "Nurse" and "StaffAccount"

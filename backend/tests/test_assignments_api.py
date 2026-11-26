@@ -110,7 +110,7 @@ def test_board_shows_primary_and_additional_nurses_of_each_ward(client):
     board = client.get("/api/assignments").json()
 
     wards = {w["ward_id"]: w for w in board["wards"]}
-    assert set(wards) == {101, 102, 103, 104}
+    assert set(wards) == {101, 102, 103, 104, 105}
     assert wards[101]["primary_nurse_id"] == "NURSE-01"
     # Primary first, then additional
     assert [(n["nurse_id"], n["is_primary"]) for n in wards[101]["nurses"]] == [
@@ -227,7 +227,9 @@ def test_every_ward_keeps_exactly_one_primary_nurse_after_a_series_of_changes(cl
 
     login(client, HEAD_NURSE)
     for w in client.get("/api/assignments").json()["wards"]:
-        assert sum(n["is_primary"] for n in w["nurses"]) == 1, w
+        # A ward with no nurses yet (the new paediatric ward) has no primary either
+        if w["nurses"]:
+            assert sum(n["is_primary"] for n in w["nurses"]) == 1, w
 
 
 # --- The database re-checks the rule ---------------------------------------------------

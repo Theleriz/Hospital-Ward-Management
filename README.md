@@ -134,6 +134,11 @@ BIS/
 - **[docs/testing/alert-timing-report.md](docs/testing/alert-timing-report.md)** — T-29: настоящий Chromium, 12 замеров доставки и первая/повторная эскалация: `bash scripts/check-alert-timing.sh`.
 - **[docs/testing/login-lockout-report.md](docs/testing/login-lockout-report.md)** — T-48: блокировка PIN в PostgreSQL, добавочная миграция и демонстрация реального рестарта: `bash scripts/check-login-lockout.sh`.
 
+Заявки на проверку:
+
+- **[docs/doctor-accounts.md](docs/doctor-accounts.md)** — штатное создание учётки врача и явного назначения пациента.
+- **[docs/demo-review-workflow.md](docs/demo-review-workflow.md)** — повторяемая подготовка отдельной БД для демо очереди заявок.
+
 Работы участников:
 
 - **[docs/works/](docs/works/)** — работы всех участников. У каждого своя папка `<Фамилия>_<Имя>`, файлы называются `<StudentID>_<Фамилия>_<Имя>_Task<N>.docx`.

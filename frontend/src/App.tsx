@@ -28,12 +28,13 @@ import LoginScreen from "./LoginScreen";
 import NursePost from "./NursePost";
 import ReportPage from "./ReportPage";
 import SimulatorPage from "./SimulatorPage";
+import StaffReviewPage from "./StaffReviewPage";
 import { useTheme } from "./theme";
 import WardBoard from "./WardBoard";
 
 type Session = { kind: "checking" } | { kind: "anonymous" } | { kind: "signed-in"; user: User };
 
-type Page = "admissions" | "post" | "report" | "assignments" | "wards" | "simulator";
+type Page = "admissions" | "post" | "report" | "assignments" | "wards" | "simulator" | "reviews";
 
 type PageInfo = {
   label: string;
@@ -75,6 +76,11 @@ const PAGE_INFO: Record<Page, PageInfo> = {
     icon: SimulatorIcon,
     description: () => "Демонстрационная замена мониторов пациента и кнопок вызова",
   },
+  reviews: {
+    label: "На проверку",
+    icon: AdmissionsIcon,
+    description: () => "Заявки персонала по пациентам, требующим проверки",
+  },
 };
 
 // Screens each role can open; the first one opens after login
@@ -83,6 +89,7 @@ const PAGES: Record<Role, Page[]> = {
   PublicStaff: ["wards"],
   Nurse: ["post", "wards", "simulator"],
   HeadNurse: ["report", "post", "assignments", "wards", "simulator"],
+  Doctor: ["reviews"],
 };
 
 export default function App() {
@@ -197,6 +204,7 @@ function Workspace({ user, onLogout }: { user: User; onLogout: () => void }) {
         {page === "assignments" && <AssignmentsPage />}
         {page === "wards" && <WardBoard />}
         {page === "simulator" && <SimulatorPage />}
+        {page === "reviews" && <StaffReviewPage />}
       </main>
     </div>
   );

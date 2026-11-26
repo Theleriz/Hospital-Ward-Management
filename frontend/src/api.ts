@@ -5,7 +5,7 @@ export type Health = {
   database: "ok" | "unavailable";
 };
 
-export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse";
+export type Role = "Admissions" | "PublicStaff" | "Nurse" | "HeadNurse" | "Doctor";
 
 export type User = {
   account_id: string;
@@ -18,6 +18,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   PublicStaff: "Персонал",
   Nurse: "Медсестра",
   HeadNurse: "Старшая медсестра",
+  Doctor: "Врач",
 };
 
 export class ApiError extends Error {
@@ -231,7 +232,7 @@ export function setMyStatus(status: NurseStatus): Promise<NurseInfo> {
 export type SimulatorWard = {
   ward_id: number;
   ward_name: string;
-  patients: { patient_id: number; full_name: string }[];
+  patients: { patient_id: number; full_name: string; age_days?: number | null }[];
   nurse_on_duty: string | null;
 };
 
@@ -249,6 +250,20 @@ export function getSimulatorWards(): Promise<SimulatorWard[]> {
 
 export function raiseAlert(alert: DeviceAlert): Promise<{ alert_id: string; assigned_nurse_id: string | null }> {
   return request("/api/simulator/alerts", { method: "POST", body: JSON.stringify(alert) });
+}
+
+export type StaffReviewRequest = {
+  request_id: number; patient_id: number; patient_name: string; patient_dob: string; reason: string;
+  requested_by: string; created_at: string; status: "PENDING" | "REVIEWED";
+  reviewed_by: string | null; reviewed_at: string | null;
+};
+
+export function submitStaffReview(patientId: number, reason: string): Promise<StaffReviewRequest> {
+  return request("/api/staff-reviews", { method: "POST", body: JSON.stringify({ patient_id: patientId, reason }) });
+}
+export function getStaffReviews(): Promise<StaffReviewRequest[]> { return request("/api/staff-reviews"); }
+export function markStaffReviewReviewed(id: number): Promise<StaffReviewRequest> {
+  return request(`/api/staff-reviews/${id}/reviewed`, { method: "POST" });
 }
 
  // --- Emergency Priority Detection (Week 12, demo only) ------------------
@@ -402,6 +417,87 @@ export function raiseNews2Alert(input: {
   vitals: News2VitalSigns;
 }): Promise<{ alert_id: string; assigned_nurse_id: string | null; assessment: News2Assessment }> {
   return request("/api/simulator/alerts/from-vitals", { method: "POST", body: JSON.stringify(input) });
+}
+
+// --- NHS England inpatient PEWS (educational only; never creates an alert) ---
+
+export type PewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  signals: string[];
+  reason: string;
+  chart_key: string | null;
+  chart_name: string | null;
+  source_url: string;
+  risk_band?: "LOW" | "MEDIUM" | "HIGH" | "EMERGENCY" | null;
+  policy_version: string;
+};
+
+export type PewsInput = {
+  patient_id: number;
+  respiratory_rate: number | null;
+  respiratory_distress: "NONE" | "MILD" | "MODERATE" | "SEVERE" | null;
+  spo2: number | null;
+  oxygen_device: "AIR" | "OXYGEN" | "HIGH_FLOW" | "BIPAP" | "CPAP" | null;
+  oxygen_delivery_pct: number | null;
+  oxygen_delivery_lpm: number | null;
+  oxygen_delivery_unit: "PERCENT" | "L_MIN" | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  systolic_code: "NCO" | "U0" | "U4" | null;
+  crt_seconds: number | null;
+  temperature: number | null;
+  temperature_route: "AXILLA" | "TYMPANIC" | "SKIN" | null;
+  avpu: "A" | "V" | "P" | "U" | null;
+  sepsis_suspected: boolean | null;
+  septic_shock_suspected: boolean | null;
+  clinical_intuition: boolean | null;
+  carer_response: "W" | "S" | "B" | "A" | "U" | null;
+  risk_factors_confirmed: boolean | null;
+  risk_factors: string[] | null;
+  measurement_confirmed: boolean;
+};
+
+export function assessPews(input: PewsInput): Promise<PewsAssessment> {
+  return request("/api/simulator/assess-pews", { method: "POST", body: JSON.stringify(input) });
+}
+
+// --- NHS England national maternity MEWS (educational only) -----------------
+
+export type MaternalMewsInput = {
+  patient_id: number;
+  maternal_status: "PREGNANT" | "POSTPARTUM" | null;
+  status_confirmed: boolean;
+  delivery_at: string | null;
+  respiratory_rate: number | null;
+  spo2: number | null;
+  temperature: number | null;
+  heart_rate: number | null;
+  systolic: number | null;
+  diastolic: number | null;
+  measurements_confirmed: boolean;
+  additional_concerns_confirmed: boolean;
+  additional_concerns: string[] | null;
+};
+
+export type MaternalMewsAssessment = {
+  status: "CLASSIFIED" | "REVIEW_REQUIRED";
+  score: number | null;
+  component_scores: Record<string, number>;
+  additional_concerns: string[];
+  risk_level: "LOW" | "LOW_MEDIUM" | "MEDIUM" | "HIGH" | null;
+  pulse_rule: "ANTENATAL" | "POSTPARTUM_UNDER_48H" | "POSTPARTUM_48H_PLUS" | null;
+  reason: string;
+  policy_version: string;
+  source_url: string;
+  scope_source_url: string;
+};
+
+export function assessMaternalMews(input: MaternalMewsInput): Promise<MaternalMewsAssessment> {
+  return request("/api/simulator/assess-maternal-mews", {
+    method: "POST", body: JSON.stringify(input),
+  });
 }
 
 // --- Ward nurse assignments (head nurse, T-51) -----------------------------------------------

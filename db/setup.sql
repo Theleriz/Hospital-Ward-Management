@@ -15,7 +15,13 @@
 
 \echo '>> 06_login_security.sql'
 \ir 06_login_security.sql
+\echo '>> 20261124_staff_review_requests.sql'
+\ir migrations/20261124_staff_review_requests.sql
+\echo '>> 20261125_pews_pediatric_ward_types.sql'
+\ir migrations/20261125_pews_pediatric_ward_types.sql
 \echo '>> 04_seed.sql'
 \ir 04_seed.sql
+\echo '>> 20261125_add_paediatrics_ward.sql'
+\ir migrations/20261125_add_paediatrics_ward.sql
 
 \echo '>> Database ready'

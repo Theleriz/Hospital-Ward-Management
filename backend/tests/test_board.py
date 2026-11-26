@@ -90,7 +90,7 @@ def test_board_asks_for_a_refresh_every_one_to_two_seconds(board):
 def test_every_ward_with_its_occupancy(board):
     shown = {w["ward_id"]: (w["occupied"], w["capacity"], w["available"]) for w in summary(board)["wards"]}
 
-    assert shown == {101: (2, 2, 0), 102: (2, 4, 2), 103: (0, 3, 3), 104: (0, 5, 5)}
+    assert shown == {101: (2, 2, 0), 102: (2, 4, 2), 103: (0, 3, 3), 104: (0, 5, 5), 105: (0, 8, 8)}
 
 
 def test_occupancy_follows_admissions(board, client):
