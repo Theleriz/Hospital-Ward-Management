@@ -26,6 +26,25 @@ class LoginRequest(BaseModel):
         return value
 
 
+def _plural_ru(value: int, one: str, few: str, many: str) -> str:
+    if 11 <= value % 100 <= 14:
+        return many
+    if value % 10 == 1:
+        return one
+    return few if 2 <= value % 10 <= 4 else many
+
+
+def _lockout_message(retry_after: int) -> str:
+    attempts = settings.login_max_failures
+    attempt_word = _plural_ru(attempts, "неудачная попытка", "неудачные попытки", "неудачных попыток")
+    if retry_after < 60:
+        remaining = f"{retry_after} {_plural_ru(retry_after, 'секунду', 'секунды', 'секунд')}"
+    else:
+        minutes = (retry_after + 59) // 60
+        remaining = f"{minutes} {_plural_ru(minutes, 'минуту', 'минуты', 'минут')}"
+    return f"У вас {attempts} {attempt_word} входа! Повторите попытку через {remaining}."
+
+
 @router.post("/login")
 def login(body: LoginRequest, request: Request) -> User:
     badge_id = body.badge_id.strip()
@@ -42,7 +61,7 @@ def login(body: LoginRequest, request: Request) -> User:
     if result.retry_after:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            "Слишком много неверных попыток, попробуйте позже",
+            _lockout_message(result.retry_after),
             headers={"Retry-After": str(result.retry_after)},
         )
 

@@ -63,8 +63,12 @@ BEGIN
             "LockedUntil" = CASE WHEN v_failures >= p_MaxFailures
                 THEN v_now + make_interval(secs => p_LockoutSeconds) ELSE NULL END,
             "UpdatedAt" = v_now WHERE "BadgeID" = v_badge;
-        -- The fifth failed attempt remains 401; following attempts are 429.
-        RETURN QUERY SELECT 'INVALID'::TEXT, 0, NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR;
+        -- Tell the caller immediately when this attempt started the lockout.
+        IF v_failures >= p_MaxFailures THEN
+            RETURN QUERY SELECT 'LOCKED'::TEXT, p_LockoutSeconds, NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR;
+        ELSE
+            RETURN QUERY SELECT 'INVALID'::TEXT, 0, NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR;
+        END IF;
     END IF;
 END;
 $$;

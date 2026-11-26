@@ -31,14 +31,15 @@ def login(badge, pin, expected):
 
 
 if phase == 'before':
-    for _ in range(5):
+    for _ in range(4):
         login('BADGE-1001', '0000', 401)
+    login('BADGE-1001', '0000', 429)
     login('BADGE-1001', '1111', 429)
     for _ in range(4):
         login('BADGE-1004', '0000', 401)
 elif phase == 'after':
     login('BADGE-1001', '1111', 429)
-    login('BADGE-1004', '0000', 401)
+    login('BADGE-1004', '0000', 429)
     login('BADGE-1004', '4444', 429)
 elif phase == 'final':
     login('BADGE-1001', '1111', 429)

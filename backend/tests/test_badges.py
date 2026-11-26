@@ -134,6 +134,10 @@ def test_demo_mode_refuses_a_reissued_badge(client):
 
 @pytest.mark.usefixtures("demo_badge_login")
 def test_demo_mode_guessing_badges_still_locks(client):
-    for _ in range(5):
-        assert client.post("/api/auth/login", json={"badge_id": "BADGE-0000"}).status_code == 401
-    assert client.post("/api/auth/login", json={"badge_id": "BADGE-0000"}).status_code == 429
+    account = {"badge_id": "BADGE-0000"}
+    for _ in range(4):
+        assert client.post("/api/auth/login", json=account).status_code == 401
+    locked = client.post("/api/auth/login", json=account)
+    assert locked.status_code == 429
+    assert locked.headers["Retry-After"] == "300"
+    assert client.post("/api/auth/login", json=account).status_code == 429

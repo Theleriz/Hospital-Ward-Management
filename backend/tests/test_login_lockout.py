@@ -23,8 +23,9 @@ def state(badge=NURSE['badge_id']):
 
 
 def fail(client, count=5, account=WRONG):
-    for _ in range(count):
-        assert client.post('/api/auth/login', json=account).status_code == 401
+    for attempt in range(1, count + 1):
+        expected = 401 if attempt < settings.login_max_failures else 429
+        assert client.post('/api/auth/login', json=account).status_code == expected
 
 
 def test_http_401_commits_failure_state(client):
@@ -51,7 +52,9 @@ def test_state_survives_new_application_lifespan(errors_before_restart):
     # No fixture/reset and a new pool/lifespan: state is in PostgreSQL, not the app.
     with TestClient(app) as second:
         if errors_before_restart == 4:
-            fail(second, 1)
+            response = second.post('/api/auth/login', json=WRONG)
+            assert response.status_code == 429
+            assert int(response.headers['Retry-After']) == settings.login_lockout_seconds
         assert second.post('/api/auth/login', json=NURSE).status_code == 429
         assert second.post('/api/auth/login', json=ADMISSIONS).status_code == 200
 
@@ -91,7 +94,7 @@ def test_blank_badge_and_non_ascii_pin_are_validation_errors(client, body):
 def test_parallel_requests_cannot_lose_failed_attempts(client):
     with ThreadPoolExecutor(max_workers=10) as executor:
         codes = list(executor.map(lambda _: client.post('/api/auth/login', json=WRONG).status_code, range(10)))
-    assert sorted(codes) == [401] * 5 + [429] * 5
+    assert sorted(codes) == [401] * 4 + [429] * 6
     assert state()[1] is not None
 
 
