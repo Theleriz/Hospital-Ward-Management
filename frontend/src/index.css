@@ -457,7 +457,8 @@ h2 {
    (src/heroui.css sets the order), so HeroUI components override them and
    every other screen looks exactly as before. */
 @layer legacy {
-  label {
+  /* HeroUI labels (data-slot) lay out their own required mark */
+  label:not([data-slot]) {
     display: flex;
     flex-direction: column;
     gap: 6px;

@@ -13,6 +13,7 @@
 @import "@heroui/styles/base" layer(base);
 /* Only the components the HeroUI screens use: index.css has its own .avatar, .badge,
    .meter and .toolbar, and the full set would restyle them on every other screen. */
+@import "@heroui/styles/components/button.css" layer(components);
 @import "@heroui/styles/components/card.css" layer(components);
 @import "@heroui/styles/components/alert.css" layer(components);
 @import "@heroui/styles/components/chip.css" layer(components);
@@ -32,7 +33,7 @@
 @import "@heroui/styles/variants";
 
 /* Tailwind scans these files for class names */
-@source "./AssignmentsPage.tsx";
+@source "./";
 
 /* .card and .alert are also index.css classes on the older screens. HeroUI marks its
    own elements with data-slot; for the others its component rules are rolled back,
