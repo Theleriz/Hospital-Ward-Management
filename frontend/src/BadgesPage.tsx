@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, getBadges, reissueBadge, ROLE_LABELS, type Badge, type Role } from "./api";
 import { LogoMark } from "./icons";
-import { Notice as NoticeAlert } from "./ui";
+import { ConfirmDialog, Notice as NoticeAlert, ScreenSkeleton } from "./ui";
 
 type Notice = { kind: "ok" | "error"; text: string };
 
@@ -65,9 +65,7 @@ export default function BadgesPage() {
     return notice ? (
       <NoticeAlert kind="error">{notice.text}</NoticeAlert>
     ) : (
-      <Card aria-busy="true" className="h-40 animate-pulse">
-        <span className="sr-only">Загрузка…</span>
-      </Card>
+      <ScreenSkeleton stats={0} cards={2} />
     );
   }
 
@@ -138,14 +136,23 @@ export default function BadgesPage() {
         </div>
       )}
 
-      {confirming && (
-        <ReissueDialog
-          badge={confirming}
-          saving={saving}
-          onConfirm={() => void reissue(confirming)}
-          onClose={() => !saving && setConfirming(null)}
-        />
-      )}
+      <ConfirmDialog
+        isOpen={confirming !== null}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title="Перевыпустить бейдж?"
+        confirmLabel="Перевыпустить"
+        busyLabel="Перевыпуск…"
+        busy={saving}
+        onConfirm={() => confirming && void reissue(confirming)}
+      >
+        {confirming && (
+          <>
+            {confirming.full_name} получит новый номер. Бейдж{" "}
+            <strong className="text-[var(--text)]">{confirming.badge_id}</strong> сразу перестанет открывать вход. PIN не
+            меняется.
+          </>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
@@ -169,55 +176,6 @@ function Barcode({ value }: { value: string }) {
   }, [value]);
 
   return <svg ref={ref} className="badge-barcode" role="img" aria-label={`Штрих-код ${value}`} />;
-}
-
-function ReissueDialog({
-  badge,
-  saving,
-  onConfirm,
-  onClose,
-}: {
-  badge: Badge;
-  saving: boolean;
-  onConfirm: () => void;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-
-  return (
-    <dialog
-      ref={ref}
-      className="confirm-dialog max-w-md rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text)] shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm"
-      aria-labelledby="reissue-title"
-      onClose={onClose}
-    >
-      <div className="flex flex-col gap-4">
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-[var(--down-bg)] text-xl font-bold text-[var(--down)]">
-          !
-        </span>
-        <h1 id="reissue-title" className="m-0 text-xl font-bold">
-          Перевыпустить бейдж?
-        </h1>
-        <p className="m-0 text-sm text-[var(--muted)]">
-          {badge.full_name} получит новый номер. Бейдж <strong className="text-[var(--text)]">{badge.badge_id}</strong>{" "}
-          сразу перестанет открывать вход. PIN не меняется.
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" autoFocus isDisabled={saving} onPress={() => ref.current?.close()}>
-            Отмена
-          </Button>
-          <Button variant="danger" onPress={onConfirm} isDisabled={saving}>
-            {saving ? "Перевыпуск…" : "Перевыпустить"}
-          </Button>
-        </div>
-      </div>
-    </dialog>
-  );
 }
 
 function roleLabel(role: string): string {

@@ -2,7 +2,7 @@ import { Card, Chip } from "@heroui/react";
 import { useEffect, useState } from "react";
 
 import { getWards, type Ward } from "./api";
-import { StatCard } from "./ui";
+import { ScreenSkeleton, StatCard } from "./ui";
 
 const REFRESH_MS = 10_000;
 
@@ -26,12 +26,12 @@ export default function WardBoard({ refreshKey = 0, compact = false }: { refresh
   }, [refreshKey]);
 
   if (wards === null) {
-    return (
+    return failed ? (
       <Card>
-        <Card.Content className="py-8 text-center text-[var(--muted)]">
-          {failed ? "Не удалось загрузить палаты" : "Загрузка…"}
-        </Card.Content>
+        <Card.Content className="py-8 text-center text-[var(--muted)]">Не удалось загрузить палаты</Card.Content>
       </Card>
+    ) : (
+      <ScreenSkeleton stats={compact ? 0 : 4} cards={1} />
     );
   }
 

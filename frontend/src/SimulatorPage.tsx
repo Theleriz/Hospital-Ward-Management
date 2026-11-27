@@ -1,4 +1,4 @@
-import { Button, Card, Chip } from "@heroui/react";
+import { Button, Card, Chip, Tabs } from "@heroui/react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { ApiError, getSimulatorWards, raiseAlert, type AlertSource, type Priority, type SimulatorWard } from "./api";
@@ -101,17 +101,27 @@ export default function SimulatorPage() {
 
   const modeControls = (
     <Card>
-      <Card.Content>
-        <ChoiceCards
-          label="Режим симулятора"
-          value={mode}
-          onChange={(next) => {
-            setMode(next);
+      <Card.Content className="flex flex-col gap-3">
+        <Tabs
+          selectedKey={mode}
+          onSelectionChange={(key) => {
+            setMode(key as Mode);
             setNotice(null);
           }}
-          choices={MODES}
           isDisabled={busy || news2Busy}
-        />
+        >
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Режим симулятора">
+              {MODES.map((m) => (
+                <Tabs.Tab key={m.value} id={m.value}>
+                  {m.label}
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+          </Tabs.ListContainer>
+        </Tabs>
+        <p className="m-0 text-sm text-[var(--muted)]">{MODES.find((m) => m.value === mode)?.hint}</p>
       </Card.Content>
     </Card>
   );

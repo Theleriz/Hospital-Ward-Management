@@ -15,7 +15,7 @@ import {
 } from "./api";
 import { SoundOffIcon, SoundOnIcon } from "./icons";
 import { playAlertSound } from "./sound";
-import { Initials, Notice, StatCard } from "./ui";
+import { Initials, Notice, ScreenSkeleton, StatCard } from "./ui";
 
 // NFR-01: an alert must be on screen within 2 seconds
 const POLL_MS = 1000;
@@ -204,6 +204,8 @@ export default function NursePost({ headNurse }: { headNurse: boolean }) {
 
       {error && <Notice kind="error">{error}</Notice>}
       {offline && <Notice kind="error">Нет связи с сервером, список может быть устаревшим</Notice>}
+
+      {!board && !offline && <ScreenSkeleton stats={4} cards={2} />}
 
       {board && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

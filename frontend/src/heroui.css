@@ -28,6 +28,17 @@
 @import "@heroui/styles/components/list-box-item.css" layer(components);
 @import "@heroui/styles/components/select.css" layer(components);
 @import "@heroui/styles/components/table.css" layer(components);
+@import "@heroui/styles/components/alert-dialog.css" layer(components);
+@import "@heroui/styles/components/drawer.css" layer(components);
+@import "@heroui/styles/components/kbd.css" layer(components);
+@import "@heroui/styles/components/modal.css" layer(components);
+@import "@heroui/styles/components/progress-circle.css" layer(components);
+@import "@heroui/styles/components/separator.css" layer(components);
+@import "@heroui/styles/components/skeleton.css" layer(components);
+@import "@heroui/styles/components/surface.css" layer(components);
+@import "@heroui/styles/components/tabs.css" layer(components);
+@import "@heroui/styles/components/tooltip.css" layer(components);
+@import "@heroui/styles/components/search-field.css" layer(components);
 @import "@heroui/styles/themes/default" layer(theme);
 @import "@heroui/styles/utilities";
 @import "@heroui/styles/variants";

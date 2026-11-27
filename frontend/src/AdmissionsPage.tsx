@@ -13,7 +13,7 @@ import {
   type Ward,
 } from "./api";
 import { SearchIcon } from "./icons";
-import { Initials, Notice } from "./ui";
+import { ConfirmDialog, Initials, Notice } from "./ui";
 import WardBoard from "./WardBoard";
 
 type NoticeState = { kind: "ok" | "error"; text: string } | null;
@@ -315,7 +315,7 @@ function PatientRow({ admission, wards, onDone, onError }: ActionProps & { admis
       <td className={`${TD} tabular-nums`}>{formatDate(admission.admit_date)}</td>
       <td className={TD}>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {mode === "view" && (
+          {(mode === "view" || mode === "discharge") && (
             <>
               <Button size="sm" variant="secondary" onPress={() => setMode("transfer")}>
                 Перевести
@@ -336,18 +336,18 @@ function PatientRow({ admission, wards, onDone, onError }: ActionProps & { admis
               </Button>
             </>
           )}
-          {mode === "discharge" && (
-            <>
-              <span className="text-sm text-[var(--text)]">Выписать?</span>
-              <Button size="sm" variant="danger" onPress={discharge} isDisabled={busy}>
-                Да, выписать
-              </Button>
-              <Button size="sm" variant="secondary" onPress={() => setMode("view")} isDisabled={busy}>
-                Отмена
-              </Button>
-            </>
-          )}
         </div>
+        <ConfirmDialog
+          isOpen={mode === "discharge"}
+          onOpenChange={(open) => !open && setMode("view")}
+          title="Выписать пациента?"
+          confirmLabel="Да, выписать"
+          busyLabel="Выписка…"
+          busy={busy}
+          onConfirm={discharge}
+        >
+          {admission.full_name} будет выписан(а) из палаты «{admission.ward_name}», место освободится сразу.
+        </ConfirmDialog>
       </td>
     </tr>
   );

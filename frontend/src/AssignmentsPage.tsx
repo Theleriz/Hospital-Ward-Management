@@ -15,7 +15,7 @@ import {
   type NurseStatus,
   type WardAssignment,
 } from "./api";
-import { initials, Notice, StatCard } from "./ui";
+import { initials, Notice, ScreenSkeleton, StatCard } from "./ui";
 
 // "Назначения" is the first screen built with HeroUI (src/heroui.css); the other
 // screens still use index.css. Labels and roles are the same as before, so the
@@ -126,9 +126,7 @@ export default function AssignmentsPage() {
     return notice ? (
       <Notice kind={notice.kind}>{notice.text}</Notice>
     ) : (
-      <Card aria-busy="true" className="h-40 animate-pulse">
-        <span className="sr-only">Загрузка…</span>
-      </Card>
+      <ScreenSkeleton stats={3} cards={2} />
     );
   }
 

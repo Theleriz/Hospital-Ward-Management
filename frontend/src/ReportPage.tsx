@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Label, ListBox, Select, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Button, Card, Chip, Label, ListBox, ProgressCircle, Select, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { Fragment, useCallback, useEffect, useState, type Key, type ReactNode } from "react";
 
 import {
@@ -12,7 +12,7 @@ import {
   type Priority,
 } from "./api";
 import { ChevronIcon, RefreshIcon } from "./icons";
-import { Notice, StatCard } from "./ui";
+import { Notice, ScreenSkeleton, StatCard } from "./ui";
 
 const REFRESH_MS = 30_000;
 
@@ -166,11 +166,13 @@ export default function ReportPage() {
       {error && <Notice kind="error">{error}</Notice>}
 
       {!shown ? (
-        <Card>
-          <Card.Content className="py-8 text-center text-[var(--muted)]">
-            {error ? "Не удалось загрузить отчёт" : "Загрузка отчёта…"}
-          </Card.Content>
-        </Card>
+        error ? (
+          <Card>
+            <Card.Content className="py-8 text-center text-[var(--muted)]">Не удалось загрузить отчёт</Card.Content>
+          </Card>
+        ) : (
+          <ScreenSkeleton stats={4} cards={2} />
+        )
       ) : (
         <>
           <Summary report={shown} />
@@ -200,15 +202,23 @@ function Summary({ report }: { report: AlertReport }) {
       />
       <StatCard
         label={`Подтверждено за ${target} с`}
-        value={percent(s.within_target, s.acknowledged)}
-        sub={
-          <span className="flex flex-col gap-1.5">
-            <span>
-              {s.within_target} из {s.acknowledged} подтверждённых
-            </span>
-            <Bar value={within} tone={within >= 80 ? "ok" : within >= 50 ? "warn" : "down"} />
+        value={
+          <span className="flex items-center gap-3">
+            <ProgressCircle
+              aria-label={`Подтверждено за ${target} с`}
+              value={within}
+              size="lg"
+              color={within >= 80 ? "success" : within >= 50 ? "warning" : "danger"}
+            >
+              <ProgressCircle.Track>
+                <ProgressCircle.TrackCircle />
+                <ProgressCircle.FillCircle />
+              </ProgressCircle.Track>
+            </ProgressCircle>
+            {percent(s.within_target, s.acknowledged)}
           </span>
         }
+        sub={`${s.within_target} из ${s.acknowledged} подтверждённых`}
       />
       <StatCard
         label="Эскалировано"
@@ -217,16 +227,6 @@ function Summary({ report }: { report: AlertReport }) {
         sub={s.total ? `${percent(s.escalated, s.total)} от всех оповещений` : "оповещений не было"}
       />
     </div>
-  );
-}
-
-/** Thin progress bar, 0–100 */
-function Bar({ value, tone }: { value: number; tone: "ok" | "warn" | "down" }) {
-  const colour = { ok: "bg-[var(--ok)]", warn: "bg-[var(--warn)]", down: "bg-[var(--down)]" }[tone];
-  return (
-    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-[var(--border)]" aria-hidden="true">
-      <span className={`block h-full rounded-full ${colour}`} style={{ width: `${Math.min(100, value)}%` }} />
-    </span>
   );
 }
 
